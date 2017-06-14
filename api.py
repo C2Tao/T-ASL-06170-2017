@@ -5,10 +5,12 @@ import zrst.asr
 from zrst import hmm
 import cPickle as pickle
 import numpy as np
-from score import write_mediaeval_scores
+from score import write_mediaeval_scores, write_mediaeval_score
 import dtw
+import subprocess
 
 path_root = '/home/c2tao/'
+answ_root = '/home/c2tao/mediaeval_2015/data/scoring_quesst2015_lang_noise/'
 path_matlab = path_root + 'zrst/zrst/matlab/'
 
 wav = {}
@@ -37,6 +39,15 @@ decode = lambda name: path_root + 'mediaeval_token/decode/{}.mlf'.format(name)
 
 mfcc = lambda cor: path_root + 'mediaeval_token/decode/list_{}.scp'.format(cor)
 
+
+dev_list = ['quesst2015_dev_{0:04}'.format(q+1) for q in range(445)]
+eva_list = ['quesst2015_eval_{0:04}'.format(q+1) for q in range(447)]
+doc_list = ['quesst2015_{0:05}'.format(q+1) for q in range(11662)]
+
+
+score_name = lambda dev_eva, tok: '{}_{}'.format(dev_eva, tok)
+score_file = lambda name: path_root + 'mediaeval_token/score/{}.stdlist.xml'.format(name)
+score_dir = lambda name: path_root + 'mediaeval_token/eval/{}/'.format(name)
 
 
 '''
@@ -124,24 +135,39 @@ def make_decode(hmm_cor, arg_m, arg_n, dec_cor):
     A = zrst.asr.ASR(target=token(tokname))
     A.external_testing(mfcc(dec_cor), decode(decname))
 
-def calc_dist(qtag, dtag, pdist):
+def calc_dist(qtag, dtag, pdmat):
     dmat = np.zeros([len(qtag),len(dtag)])
     
     for i, d in enumerate(dtag):
         for j, q in enumerate(qtag):
-            dmat[j,i] = pdist[(d,q)]
-     
-    return dmat 
+            dmat[j,i] = pdmat[(d,q)]
+    
+    #for i in range(len(dtag)-len(qtag)+1):
+    #    v = np.diag(dmat,i)
+    #    print len(v), np.sum(v)/len(v)
+    #print dmat.shape
+   
+    vdis = np.zeros(len(qtag)+len(dtag)-1)
+    for i in np.arange(-len(qtag)+1,len(dtag)):
+        v = np.diag(dmat,i)
+        vdis[i+len(qtag)-1] = np.sum(v)/len(v)
+        #print len(v), np.sum(v)/len(v)
+    #print dmat.shape
+    return np.min(vdis)
 
 
-def make_scores(qer_path, doc_path, pdist, sys_name, answ_path):
+#def make_scores(qer_path, doc_path, pdmat, sys_name, answ_path):
+def make_score(qer_path, doc_path, pdmat, sys_name):
     dmlf = zrst.util.MLF(doc_path)
     qmlf = zrst.util.MLF(qer_path)
-    
     scores = np.zeros([len(qmlf.wav_list), len(dmlf.wav_list)])
+    if 'dev' in sys_name.split('_')[0]:
+        qer_list = dev_list
+    else:
+        qer_list = eva_list
     for i, dtag in enumerate(dmlf.tag_list):
         print 100.0*i/len(dmlf.tag_list)
-        for j, qtag in enumerate(qmlf.tag_list):
+        for j, qtag in enumerate(qmlf.tag_list]):
             #print dtag, qtag
             #print dtag, dmlf.tag_list[d]
             #print qtag, qmlf.tag_list[q]
@@ -151,15 +177,38 @@ def make_scores(qer_path, doc_path, pdist, sys_name, answ_path):
 
             #scores[q,d] = zrst.util.SubDTW(dtag, qtag, lambda a,b: pdist[(a,b)])
 
-            #scores[q,d] = dtw.pattern_dtw(qtag, dtag, pdist)
-
-            calc_dist(qtag, dtag, pdist)
-        
+            #scores[q,d] = dtw.pattern_dtw(qtag, dtag, pdmat)
+            scores[q,d] =  calc_dist(qtag, dtag, pdmat)
     #'quesst2015_eval_0001'
     #'quesst2015_00032'
-    #yesno = np.zeros([len(qmlf.wav_list), len(dmlf.wav_list)]) 
+    ###scores = np.zeros([len(qmlf.wav_list), len(dmlf.wav_list)]) 
+    yesno = np.zeros([len(qmlf.wav_list), len(dmlf.wav_list)]) 
+
+    write_mediaeval_score(sys_name, '', yesno,  scores, qer_list, doc_list, score_file(sys_name))
     #write_mediaeval_scores(sys_name, yesno, scores, answ_path)
-    
+
+def make_score_macro(deveva, cor, m, n):
+    tokname = token_name(cor, m, n)
+    if cor=='doc':
+        doc_mlf = '/home/c2tao/mediaeval_token/token/{}/result/result.mlf'.format(tokname)
+        qer_mlf = '/home/c2tao/mediaeval_token/decode/{}_{}.mlf'.format(tokname, deveva)
+    else:
+        if cor==deveva:
+            qer_mlf = '/home/c2tao/mediaeval_token/token/{}/result/result.mlf'.format(tokname)
+        else:
+            qer_mlf = '/home/c2tao/mediaeval_token/decode/{}_{}.mlf'.format(tokname, deveva)
+        doc_mlf = '/home/c2tao/mediaeval_token/decode/{}_doc.mlf'.format(tokname)
+        
+    pdmat = make_pdist(cor, m, n)
+    make_score(qer_mlf, doc_mlf, pdmat, score_name(deveva, tokname))
+
+def eval_score(sys_name, answ_dir):
+    try: os.mkdir(score_dir(sys_name))
+    except:pass
+
+    subprocess.Popen(['cp', score_file(sys_name), score_dir(sys_name)])
+    subprocess.Popen(['./score-TWV-Cnxe.sh', score_dir(sys_name), answ_dir], cwd = answ_root)
+ 
 def ran_qer_token():
     token_args = []
     for c in ['dev','eva']:
@@ -206,31 +255,48 @@ def ran_make_decode():
                     token_args.append((hmm_c, m, n, dec_c))
     print token_args
     zrst.util.run_parallel(make_decode, token_args)
-    
+
+def run_make_score():
+    token_args = []
+    for deveva in ['dev','eva']:
+        for hmm_c in ['dev','eva']:
+            for m in [3, 5, 7]:
+                for n in [10, 100, 200, 300]:
+                    token_args.append((deveva,hmm_c,m,n))
+
+    for deveva in ['dev','eva']:
+        for hmm_c in ['doc']:
+            for m in [3, 5, 7]:
+                for n in [100, 200]:
+                    token_args.append((deveva,hmm_c,m,n))
+
+    print token_args
+    zrst.util.run_parallel(make_decode, token_args)
+
+
+
 if __name__=='__main__':
     #make_init()
     #ran_qer_token()
     #ran_doc_token()
     #ran_make_pdist() 
     #ran_make_decode()
-    doc_mlf = '/home/c2tao/mediaeval_token/decode/dev_5_100_doc.mlf'
-    qer_mlf = '/home/c2tao/mediaeval_token/token/dev_5_100/result/result.mlf'
-    a = ['sil', 'p75', 'p38', 'p99', 'p17', 'p8', 'p43', 'p43', 'p51', 'p2', 'p78', 'p86', 'p34', 'p87', 'p86', 'p93', 'p93', 'p43', 'p82', 'p2', 'p99', 'p83', 'p95', 'p67', 'p93', 'p46', 'p43', 'p95', 'p83', 'p90', 'p51', 'p51', 'p43', 'p21', 'p27', 'p2', 'p99', 'p87', 'p78', 'p43', 'p84', 'p2', 'p2', 'p31', 'p68', 'p99', 'p83', 'p43', 'p87', 'p9', 'p82', 'p51', 'p51', 'p84', 'p2', 'p9', 'p76', 'p36', 'p74', 'p2', 'p99', 'p17', 'p93', 'p99', 'p2', 'p10', 'p51', 'p57', 'p29', 'p35', 'p36', 'p51', 'p39', 'sil']
-    b = ['sil', 'p3', 'p29', 'p29', 'p92', 'p29', 'p92', 'p92', 'p77', 'p31', 'p67', 'p87', 'p56', 'p69', 'p35', 'p2', 'p26', 'p64', 'p29', 'p92', 'p92', 'p92', 'p92', 'p94', 'p77', 'p35', 'p26', 'p94', 'p91', 'p17', 'p79', 'p62', 'p11', 'p45', 'p24', 'p11', 'p14', 'p87', 'p84', 'p84', 'p56', 'p59', 'p57', 'p47', 'p64', 'p47', 'p64', 'p29', 'p64', 'p92', 'p50', 'p2', 'p35', 'p66', 'p92', 'p60', 'p31', 'p26', 'p17', 'p82', 'p89', 'p85', 'p76', 'p55', 'p89', 'p33', 'p87', 'p47', 'p92', 'p64', 'p64', 'p64', 'p64', 'p64', 'p47', 'p92', 'p29', 'p64', 'p91', 'p37', 'p97', 'p68', 'p45', 'p89', 'p87', 'p47', 'p47', 'p64', 'p35', 'p92', 'p96', 'sil']
+    '''
+    #qer_mlf = '/home/c2tao/mediaeval_token/token/dev_5_100/result/result.mlf'
+    #doc_mlf = '/home/c2tao/mediaeval_token/decode/dev_5_100_doc.mlf'
     
-    pdist = make_pdist('dev', 5, 100)
+    qer_mlf = '/home/c2tao/mediaeval_token/decode/doc_5_100_dev.mlf'
+    doc_mlf = '/home/c2tao/mediaeval_token/token/doc_5_100/result/result.mlf'
+    
+    pdmat = make_pdist('dev', 5, 100)
     #answ_path = 'groundtruth_quesst2015_eval' 
     answ_path = 'groundtruth_quesst2015_dev' 
      
-    make_scores(qer_mlf, doc_mlf,pdist,'dev_5_100',answ_path)
-    #dmat = calc_dist(a, b, pdist)
+    #make_scores(qer_mlf, doc_mlf, pdmat,'dev_5_100',answ_path)
+    make_score(qer_mlf, doc_mlf, pdmat,'dev_dev_5_100')
+    #eval_score('dev_dev_5_100', answ_path)
     '''
-    a = [0,1,2,3,4,5,6,7]
-    b = [2,3,4,5]
-    A = zrst.util.DTW(a,b,lambda x,y:abs(x-y))
-    print A.calculate()
-    print A.get_path()
-    B = zrst.util.SubDTW(a,b,lambda x,y:abs(x-y))
-    print B.calculate()
-    print B.get_path()
-    '''
+    
+    make_score_macro('dev','doc',3,100,'dev')
+    answ_path = 'groundtruth_quesst2015_dev' 
+    eval_score(score_name('dev',(token_name('doc',3,100))), answ_path)

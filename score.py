@@ -90,7 +90,8 @@ def write_mediaeval_scores(sys_name, yesno, score_list, answ_path):
     except:
         print('warning', stdpath,'exists')
 
-    write_mediaeval_score(sys_name, '', yesno, score, qer_list, doc_list, stdpath +'/'+stdlist)
+    #write_mediaeval_score(sys_name, '', yesno, score_list, qer_list, doc_list, stdpath +'/'+stdlist)
+    write_mediaeval_score(sys_name, tlist, yesno, score_list, qer_list, doc_list, stdpath +'/'+stdlist)
     
     import subprocess 
     def single():
