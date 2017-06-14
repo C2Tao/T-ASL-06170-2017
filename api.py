@@ -1,10 +1,11 @@
-
+import os
 import zrst
 import zrst.util
 import zrst.asr
 from zrst import hmm
 import cPickle as pickle
 import numpy as np
+from score import write_mediaeval_scores
 
 path_root = '/home/c2tao/'
 path_matlab = path_root + 'zrst/zrst/matlab/'
@@ -22,12 +23,18 @@ wav['eva'] = wav_root + 'QUESST2015-eval_groundtruth/eval_queries/'
 #init['eva'] = lambda n: init_root + 'eva_{}_flatten.txt'.format(n)
 
 
-init_name = lambda c, n: '{}_{}'.format(c, n)
+init_name = lambda cor, n: '{}_{}'.format(cor, n)
 init = lambda name: path_root + 'mediaeval_token/init/{}_flatten.txt'.format(name)
 
-token_name = lambda c, m, n: '{}_{}_{}'.format(c, m, n)
+token_name = lambda cor, m, n: '{}_{}_{}'.format(cor, m, n)
 token = lambda name: path_root + 'mediaeval_token/token/{}/'.format(name)
 pdist = lambda name: path_root + 'mediaeval_token/pdist/{}.dat'.format(name)
+
+decode_name = lambda tok, cor: '{}_{}'.format(tok, cor)
+decode = lambda name: path_root + 'mediaeval_token/decode/{}.mlf'.format(name)
+
+
+mfcc = lambda cor: path_root + 'mediaeval_token/decode/list_{}.scp'.format(cor)
 
 
 
@@ -43,10 +50,15 @@ def run_make_init():
         make_init(wav_eva, n, init_eva.format(n))
 '''
 
+def make_list(wav_folder):
+    os.listdir(wav_list)
+    mfcc = lambda wav_name: ['\"{}\"'.format(f) for f in sorted(os.listdir(wav_name[:-1]+'_MFCC/'))]#quesst2015_dev_0290.mfc
+    
+    
+
 def make_init():
-    import os
     for f in os.listdir(init_root):
-        if f[-4:]=='.txt':
+        if f[-4:]=='.txt' and 'flatten' not in f:
             _in = init_root+f
             _out = init_root+f[:-4]+'_flatten'+f[-4:]
             print _in, _out
@@ -104,26 +116,17 @@ def make_pdist(cor, arg_m, arg_n):
     pickle.dump(dm,open(pdist(tokset_name),'w'))
     return dm
 
-def run_make_pdist():
-    import sys
-    token_args = []
-    for c in ['dev','eva']:
-        for m in [3, 5, 7]:
-            for n in [10, 100, 200, 300]:
-                token_args.append((c, m, n))
-    for c in ['doc']:
-        for m in [3, 5, 7]:
-            for n in [100, 200]:
-                token_args.append((c, m, n))
-    print token_args
-    zrst.util.run_parallel(make_pdist, token_args)
-    ##print map(token_name, *zip(*token_args))
-    #for t in tok_args:
-    #    if sys.argv[1] not in t: continue
-    #    X = make_pdist(t)
-    #    print 'progress', 100.0*tokset.index(t)/len(tokset),'%'
+    
+def make_decode(hmm_cor, arg_m, arg_n, dec_cor):
+    tokname = token_name(hmm_cor, arg_m, arg_n)
+    decname = decode_name(tokname, dec_cor)
+    A = zrst.asr.ASR(target=token(tokname))
+    A.external_testing(mfcc(dec_cor), decode(decname))
 
-
+def make_scores(doc_path, qer_path):
+    doc_mlf = zrst.util.MLF(doc_path)
+    qer_mlf = zrst.util.MLF(qer_path)
+    #write_mediaeval_scores(sys_name, yesno, score_list, answ_path)
     
 def ran_qer_token():
     token_args = []
@@ -143,10 +146,40 @@ def ran_doc_token():
     print token_args
     zrst.util.run_parallel(make_token, token_args)
 
+def ran_make_pdist():
+    token_args = []
+    for c in ['dev','eva']:
+        for m in [3, 5, 7]:
+            for n in [10, 100, 200, 300]:
+                token_args.append((c, m, n))
+    for c in ['doc']:
+        for m in [3, 5, 7]:
+            for n in [100, 200]:
+                token_args.append((c, m, n))
+    print token_args
+    zrst.util.run_parallel(make_pdist, token_args)
 
+def ran_make_decode():
+    token_args = []
+    for hmm_c in ['dev','eva']:
+        for m in [3, 5, 7]:
+            for n in [10, 100, 200, 300]:
+                for dec_c in ['doc']:
+                    token_args.append((hmm_c, m, n, dec_c))
+
+    for hmm_c in ['doc']:
+        for m in [3, 5, 7]:
+            for n in [100, 200]:
+                for dec_c in ['dev','eva']:
+                    token_args.append((hmm_c, m, n, dec_c))
+    print token_args
+    zrst.util.run_parallel(make_decode, token_args)
+    
 if __name__=='__main__':
     #make_init()
     #ran_qer_token()
     #ran_doc_token()
-    run_make_pdist() 
-     
+    #ran_make_pdist() 
+    #ran_make_decode()
+    mlf = '/home/c2tao/mediaeval_token/decode/dev_5_100_doc.mlf'
+    make_scores(mlf, mlf)
