@@ -90,7 +90,7 @@ def write_mediaeval_scores(sys_name, yesno, score_list, answ_path):
     except:
         print('warning', stdpath,'exists')
 
-    write_mediaeval_score(sys_name, tlist, yesno, score, qer_list, doc_list, stdpath +'/'+stdlist)
+    write_mediaeval_score(sys_name, '', yesno, score, qer_list, doc_list, stdpath +'/'+stdlist)
     
     import subprocess 
     def single():
@@ -114,7 +114,7 @@ if __name__=='__main__':
     #write_mediaeval_score('sys', 'termfile', yesno, score, qer_list, doc_list, 'temp.stdlist.xml')
     #answ_path = 'groundtruth_quesst2015_dev' 
     answ_path = 'groundtruth_quesst2015_eval' 
-    write_mediaeval_scores('ggg', yesno, score, answ_path)
+    write_mediaeval_scores('kkk', yesno, score, answ_path)
 
 
 

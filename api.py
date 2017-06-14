@@ -6,6 +6,7 @@ from zrst import hmm
 import cPickle as pickle
 import numpy as np
 from score import write_mediaeval_scores
+import dtw
 
 path_root = '/home/c2tao/'
 path_matlab = path_root + 'zrst/zrst/matlab/'
@@ -82,7 +83,7 @@ def make_token(cor, arg_m, arg_n):
 def make_pdist(cor, arg_m, arg_n):
     tokset_name = token_name(cor, arg_m, arg_n)
     try:
-        dm = pickle.load(pdist(tokset_name),'r')
+        dm = pickle.load(open(pdist(tokset_name),'r'))
         print 'loaded precomputed distance for ' + tokset_name
         return dm
     except:
@@ -123,10 +124,41 @@ def make_decode(hmm_cor, arg_m, arg_n, dec_cor):
     A = zrst.asr.ASR(target=token(tokname))
     A.external_testing(mfcc(dec_cor), decode(decname))
 
-def make_scores(doc_path, qer_path):
-    doc_mlf = zrst.util.MLF(doc_path)
-    qer_mlf = zrst.util.MLF(qer_path)
-    #write_mediaeval_scores(sys_name, yesno, score_list, answ_path)
+def calc_dist(qtag, dtag, pdist):
+    dmat = np.zeros([len(qtag),len(dtag)])
+    
+    for i, d in enumerate(dtag):
+        for j, q in enumerate(qtag):
+            dmat[j,i] = pdist[(d,q)]
+     
+    return dmat 
+
+
+def make_scores(qer_path, doc_path, pdist, sys_name, answ_path):
+    dmlf = zrst.util.MLF(doc_path)
+    qmlf = zrst.util.MLF(qer_path)
+    
+    scores = np.zeros([len(qmlf.wav_list), len(dmlf.wav_list)])
+    for i, dtag in enumerate(dmlf.tag_list):
+        print 100.0*i/len(dmlf.tag_list)
+        for j, qtag in enumerate(qmlf.tag_list):
+            #print dtag, qtag
+            #print dtag, dmlf.tag_list[d]
+            #print qtag, qmlf.tag_list[q]
+            d = int(dmlf.wav_list[i].split('_')[-1])-1
+            q = int(qmlf.wav_list[j].split('_')[-1])-1
+            #print pdist[(dtag[0],qtag[0])]
+
+            #scores[q,d] = zrst.util.SubDTW(dtag, qtag, lambda a,b: pdist[(a,b)])
+
+            #scores[q,d] = dtw.pattern_dtw(qtag, dtag, pdist)
+
+            calc_dist(qtag, dtag, pdist)
+        
+    #'quesst2015_eval_0001'
+    #'quesst2015_00032'
+    #yesno = np.zeros([len(qmlf.wav_list), len(dmlf.wav_list)]) 
+    #write_mediaeval_scores(sys_name, yesno, scores, answ_path)
     
 def ran_qer_token():
     token_args = []
@@ -181,5 +213,24 @@ if __name__=='__main__':
     #ran_doc_token()
     #ran_make_pdist() 
     #ran_make_decode()
-    mlf = '/home/c2tao/mediaeval_token/decode/dev_5_100_doc.mlf'
-    make_scores(mlf, mlf)
+    doc_mlf = '/home/c2tao/mediaeval_token/decode/dev_5_100_doc.mlf'
+    qer_mlf = '/home/c2tao/mediaeval_token/token/dev_5_100/result/result.mlf'
+    a = ['sil', 'p75', 'p38', 'p99', 'p17', 'p8', 'p43', 'p43', 'p51', 'p2', 'p78', 'p86', 'p34', 'p87', 'p86', 'p93', 'p93', 'p43', 'p82', 'p2', 'p99', 'p83', 'p95', 'p67', 'p93', 'p46', 'p43', 'p95', 'p83', 'p90', 'p51', 'p51', 'p43', 'p21', 'p27', 'p2', 'p99', 'p87', 'p78', 'p43', 'p84', 'p2', 'p2', 'p31', 'p68', 'p99', 'p83', 'p43', 'p87', 'p9', 'p82', 'p51', 'p51', 'p84', 'p2', 'p9', 'p76', 'p36', 'p74', 'p2', 'p99', 'p17', 'p93', 'p99', 'p2', 'p10', 'p51', 'p57', 'p29', 'p35', 'p36', 'p51', 'p39', 'sil']
+    b = ['sil', 'p3', 'p29', 'p29', 'p92', 'p29', 'p92', 'p92', 'p77', 'p31', 'p67', 'p87', 'p56', 'p69', 'p35', 'p2', 'p26', 'p64', 'p29', 'p92', 'p92', 'p92', 'p92', 'p94', 'p77', 'p35', 'p26', 'p94', 'p91', 'p17', 'p79', 'p62', 'p11', 'p45', 'p24', 'p11', 'p14', 'p87', 'p84', 'p84', 'p56', 'p59', 'p57', 'p47', 'p64', 'p47', 'p64', 'p29', 'p64', 'p92', 'p50', 'p2', 'p35', 'p66', 'p92', 'p60', 'p31', 'p26', 'p17', 'p82', 'p89', 'p85', 'p76', 'p55', 'p89', 'p33', 'p87', 'p47', 'p92', 'p64', 'p64', 'p64', 'p64', 'p64', 'p47', 'p92', 'p29', 'p64', 'p91', 'p37', 'p97', 'p68', 'p45', 'p89', 'p87', 'p47', 'p47', 'p64', 'p35', 'p92', 'p96', 'sil']
+    
+    pdist = make_pdist('dev', 5, 100)
+    #answ_path = 'groundtruth_quesst2015_eval' 
+    answ_path = 'groundtruth_quesst2015_dev' 
+     
+    make_scores(qer_mlf, doc_mlf,pdist,'dev_5_100',answ_path)
+    #dmat = calc_dist(a, b, pdist)
+    '''
+    a = [0,1,2,3,4,5,6,7]
+    b = [2,3,4,5]
+    A = zrst.util.DTW(a,b,lambda x,y:abs(x-y))
+    print A.calculate()
+    print A.get_path()
+    B = zrst.util.SubDTW(a,b,lambda x,y:abs(x-y))
+    print B.calculate()
+    print B.get_path()
+    '''
