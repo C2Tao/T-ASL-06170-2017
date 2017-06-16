@@ -161,6 +161,23 @@ def calc_dist(qtag, dtag, pdmat, method, hmm_prob=None):
             vdis[i+len(qtag)-1] = np.sum(v)/len(v)
             #print np.sum(v)/len(v)
         return -np.mean(np.sort(vdis)[:3])
+    elif method == 'norm':
+        dmat = dmat/np.linalg.norm(dmat)
+        vdis = np.zeros(len(qtag)+len(dtag)-1)
+        for i in np.arange(-len(qtag)+1,len(dtag)):
+            v = np.diag(dmat,i)
+            vdis[i+len(qtag)-1] = np.sum(v)/len(v)
+            #print np.sum(v)/len(v)
+        return -np.mean(np.sort(vdis)[:3])
+    elif method =='hmmp':
+        dmat = dmat/np.linalg.norm(dmat)
+        dmat = dmat+hmm_prob
+        vdis = np.zeros(len(qtag)+len(dtag)-1)
+        for i in np.arange(-len(qtag)+1,len(dtag)):
+            v = np.diag(dmat,i)
+            vdis[i+len(qtag)-1] = np.sum(v)/len(v)
+        return -np.mean(np.sort(vdis)[:3])
+        
     elif method =='debug':
         print dmat.shape
         qprob,dprob = hmm_prob
@@ -248,29 +265,35 @@ def calc_score(qer_path, doc_path, pdmat, method):
         xx = ss[1:]-ss[0] 
         print 'larger better',np.sum(xx)
         #print dmlf.wav_list[0], qmlf.wav_list[0]
-    return 
     scores = np.zeros([len(qmlf.wav_list), len(dmlf.wav_list)])
     if method=='zero':
         return scores
     if method=='rand':
         return np.random.rand(len(qmlf.wav_list), len(dmlf.wav_list))
-
-    for j, qtag in enumerate(qmlf.tag_list):
-        print score_name, 100.0*j/len(qmlf.tag_list)
-        for i, dtag in enumerate(dmlf.tag_list):
-            #print dtag, qtag
-            #print dtag, dmlf.tag_list[d]
-            #print qtag, qmlf.tag_list[q]
-            d = int(dmlf.wav_list[i].split('_')[-1])-1
-            q = int(qmlf.wav_list[j].split('_')[-1])-1
-            #print token_pdist[(dtag[0],qtag[0])]
-            #scores[q,d] = zrst.util.SubDTW(dtag, qtag, lambda a,b: token_pdist[(a,b)])
-            if method =='warp':
-                scores[q,d] = dtw.pattern_dtw(qtag, dtag, pdmat)
-            elif method=='whole' or 'short':
-                scores[q,d] = calc_dist(qtag, dtag, pdmat, method)
-            #break
-        #break
+    if method =='hmmp':
+        for j, qtag in enumerate(qmlf.tag_list):
+            print qer_path, 100.0*j/len(qmlf.tag_list)
+            qprob =  np.array(qmlf.log_list[j][1:-1])
+            qprob = -qprob/np.linalg.norm(qprob)/10.0
+            qprob = qprob[:,np.newaxis]
+            for i, dtag in enumerate(dmlf.tag_list):
+                d = int(dmlf.wav_list[i].split('_')[-1])-1
+                q = int(qmlf.wav_list[j].split('_')[-1])-1
+                dprob =  np.array(dmlf.log_list[i][1:-1])
+                dprob = -dprob/np.linalg.norm(dprob)/10.0
+                dprob = dprob[np.newaxis,:]
+                scores[q,d] = calc_dist(qtag[1:-1], dtag[1:-1], pdmat, method, qprob+dprob)
+    else: 
+        for j, qtag in enumerate(qmlf.tag_list):
+            print qer_path, 100.0*j/len(qmlf.tag_list)
+            for i, dtag in enumerate(dmlf.tag_list):
+                d = int(dmlf.wav_list[i].split('_')[-1])-1
+                q = int(qmlf.wav_list[j].split('_')[-1])-1
+                if method =='warp':
+                    scores[q,d] = dtw.pattern_dtw(qtag[1:-1], dtag[1:-1], pdmat)
+                elif method=='whole' or 'short':
+                    scores[q,d] = calc_dist(qtag[1:-1], dtag[1:-1], pdmat, method)
+                
     return scores
 
 
@@ -302,7 +325,7 @@ def make_score(qer, cor, m, n, method):
     if method !='debug':
         with open(score(scr_name),'w') as f:
             pickle.dump(sc, f, protocol=pickle.HIGHEST_PROTOCOL)
-
+        return sc
 
 def make_eval(qer, cor, m, n, method, ans, thresh=None):
     scr_name = score_name(qer, token_name(cor, m, n), method)
@@ -409,10 +432,10 @@ def run_make_score():
                         token_args.append((qer,hmm_c,m,n,method))
     '''
     for qer in ['dev']:
-        for hmm_c in ['dev']:
+        for hmm_c in [qer, 'doc']:
             for m in [7]:
                 for n in [100]:
-                    for method in ['debug']:
+                    for method in ['hmmp','short', 'norm']:
                         token_args.append((qer,hmm_c,m,n,method))
     zrst.util.run_parallel(make_score, token_args)
 
@@ -427,12 +450,12 @@ def run_make_eval():
                         for ans in ['','T1','T2','T3']:
                             make_eval(qer,hmm_c, m, n, method, ans)
     '''
-    for qer in ['dev']:
-        for hmm_c in ['doc']:
+    for qer in ['dev', 'eva']:
+        for hmm_c in [qer, 'doc']:
             for m in [7]:
                 for n in [100]:
-                    for method in ['rand']:
-                        for ans in ['Chinese']:
+                    for method in ['hmmp','short']:
+                        for ans in ['']:
                             make_eval(qer,hmm_c, m, n, method, ans)
     
     
@@ -445,4 +468,5 @@ if __name__=='__main__':
     #ran_make_decode()
     
     run_make_score()
+    
     #run_make_eval() 
