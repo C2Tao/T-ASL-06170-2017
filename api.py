@@ -5,12 +5,14 @@ import zrst.asr
 from zrst import hmm
 import cPickle as pickle
 import numpy as np
-from score import write_mediaeval_scores, write_mediaeval_score
+from score import parse_eval, write_mediaeval_score
 import dtw
-import subprocess
+import subprocess 
+from subprocess import PIPE
+import time
 
 path_root = '/home/c2tao/'
-answ_root = '/home/c2tao/mediaeval_2015/data/scoring_quesst2015_lang_noise/'
+answer_root = '/home/c2tao/mediaeval_2015/data/scoring_quesst2015_lang_noise/'
 path_matlab = path_root + 'zrst/zrst/matlab/'
 
 wav = {}
@@ -19,52 +21,53 @@ wav['doc'] = wav_root + 'QUESST2015-dev/Audio/'
 wav['dev'] = wav_root + 'QUESST2015-dev/dev_queries/' 
 wav['eva'] = wav_root + 'QUESST2015-eval_groundtruth/eval_queries/'
 
-#init = {}
-#init_root = path_root + 'mediaeval_token/init/'
-#init['doc'] = lambda n: init_root + 'doc_{}_flatten.txt'.format(n)
-#init['dev'] = lambda n: init_root + 'dev_{}_flatten.txt'.format(n)
-#init['eva'] = lambda n: init_root + 'eva_{}_flatten.txt'.format(n)
-
-
 init_name = lambda cor, n: '{}_{}'.format(cor, n)
 init = lambda name: path_root + 'mediaeval_token/init/{}_flatten.txt'.format(name)
 
 token_name = lambda cor, m, n: '{}_{}_{}'.format(cor, m, n)
 token = lambda name: path_root + 'mediaeval_token/token/{}/'.format(name)
-pdist = lambda name: path_root + 'mediaeval_token/pdist/{}.dat'.format(name)
+token_pdist = lambda name: path_root + 'mediaeval_token/pdist/{}.dat'.format(name)
+token_result = lambda name: path_root + 'mediaeval_token/token/{}/result/result.mlf'.format(name)
 
 decode_name = lambda tok, cor: '{}_{}'.format(tok, cor)
 decode = lambda name: path_root + 'mediaeval_token/decode/{}.mlf'.format(name)
 
+cor_mfcc = lambda cor: path_root + 'mediaeval_token/decode/list_{}.scp'.format(cor)
 
-mfcc = lambda cor: path_root + 'mediaeval_token/decode/list_{}.scp'.format(cor)
 
+method_name = ['whole','short','warp']
+
+score_name = lambda qer, tok, method: '{}_{}_{}'.format(qer, tok, method)
+score = lambda name: path_root+ 'mediaeval_token/score/{}.dat'.format(name)
+
+evals_name = lambda scr, ans: '{}{}'.format(scr, '_'+ans if ans!='' else '' )
+evals = lambda name: path_root + 'mediaeval_token/eval/{}/score.out'.format(name)
+evals_file = lambda name: path_root + 'mediaeval_token/eval/{0}/{0}.stdlist.xml'.format(name)
+evals_dir = lambda name: path_root + 'mediaeval_token/eval/{}/'.format(name)
+
+
+#answ_name=\
+'''              
+_Albanian     _Chinese      _Czech        _Portuguese   _Romanian     _Slovak  
+_rvb0_db1     _rvb0_db14    _rvb0_db2     _rvb0_db3     _rvb0_db4     _rvb0_db5     _rvb0_db5_T1  
+_rvb1_db1     _rvb1_db2     _rvb1_db3     _rvb1_db4     _rvb1_db5     
+_rvb2_db1     _rvb2_db2  _rvb2_db3  _rvb2_db4  _rvb2_db5  
+_rvb3_db1  _rvb3_db2  _rvb3_db3  _rvb3_db4  _rvb3_db5  
+_rvb4_db1  _rvb4_db2  _rvb4_db3  _rvb4_db4  _rvb4_db5  
+_rvb5_db1  _rvb5_db2  _rvb5_db3  _rvb5_db4  _rvb5_db5
+_rvb15_db14   _rvb15_db5    
+_T1      _T2      _T3      
+'''
+answer = lambda qer, ans: answer_root + 'groundtruth_quesst2015_{}{}'.format('dev' if qer=='dev' else 'eval', ans if ans=='' else '_'+ans)
 
 dev_list = ['quesst2015_dev_{0:04}'.format(q+1) for q in range(445)]
 eva_list = ['quesst2015_eval_{0:04}'.format(q+1) for q in range(447)]
 doc_list = ['quesst2015_{0:05}'.format(q+1) for q in range(11662)]
 
 
-score_name = lambda dev_eva, tok: '{}_{}'.format(dev_eva, tok)
-score_file = lambda name: path_root + 'mediaeval_token/score/{}.stdlist.xml'.format(name)
-score_dir = lambda name: path_root + 'mediaeval_token/eval/{}/'.format(name)
-
-
-'''
-def make_init(in_wav, arg_cluster, out_init):
-    import subprocess 
-    subprocess.Popen(['./run_clusterDetection.sh', in_wav, str(arg_cluster), out_init], cwd = path_matlab)
-    #subprocess.Popen('./run_clusterDetection.sh ~/mediaeval_2015/data/QUESST2015-dev/Audio/ 500 mediaeval_500.txt', cwd = path_matlab)
-
-def run_make_init():
-    for n in [100, 200, 300]:
-        make_init(wav_dev, n, init_dev.format(n))
-        make_init(wav_eva, n, init_eva.format(n))
-'''
-
 def make_list(wav_folder):
     os.listdir(wav_list)
-    mfcc = lambda wav_name: ['\"{}\"'.format(f) for f in sorted(os.listdir(wav_name[:-1]+'_MFCC/'))]#quesst2015_dev_0290.mfc
+    cor_mfcc = lambda wav_name: ['\"{}\"'.format(f) for f in sorted(os.listdir(wav_name[:-1]+'_MFCC/'))]#quesst2015_dev_0290.mfc
     
     
 
@@ -92,15 +95,15 @@ def make_token(cor, arg_m, arg_n):
     '''
 
 def make_pdist(cor, arg_m, arg_n):
-    tokset_name = token_name(cor, arg_m, arg_n)
+    tok_name = token_name(cor, arg_m, arg_n)
     try:
-        dm = pickle.load(open(pdist(tokset_name),'r'))
-        print 'loaded precomputed distance for ' + tokset_name
+        dm = pickle.load(open(token_pdist(tok_name),'r'))
+        print 'loaded precomputed distance for ' + tok_name
         return dm
     except:
-        print 'computing distance for ' + tokset_name
+        print 'computing distance for ' + tok_name
     dm = {}
-    H = hmm.parse_hmm(token(tokset_name)+'hmm/models')
+    H = hmm.parse_hmm(token(tok_name)+'hmm/models')
     phones = filter(lambda x: 's' not in x,H.keys())
     for i in phones:
         for j in phones:
@@ -125,89 +128,228 @@ def make_pdist(cor, arg_m, arg_n):
 
     for k in dm.keys():
         dm[(k[1], k[0])] = dm[k]
-    pickle.dump(dm,open(pdist(tokset_name),'w'))
+    pickle.dump(dm,open(token_pdist(tok_name),'w'))
     return dm
 
     
 def make_decode(hmm_cor, arg_m, arg_n, dec_cor):
-    tokname = token_name(hmm_cor, arg_m, arg_n)
-    decname = decode_name(tokname, dec_cor)
-    A = zrst.asr.ASR(target=token(tokname))
-    A.external_testing(mfcc(dec_cor), decode(decname))
+    tok_name = token_name(hmm_cor, arg_m, arg_n)
+    dec_name = decode_name(tok_name, dec_cor)
+    A = zrst.asr.ASR(target=token(tok_name))
+    A.external_testing(cor_mfcc(dec_cor), decode(dec_name))
 
-def calc_dist(qtag, dtag, pdmat):
+def calc_dist(qtag, dtag, pdmat, method, hmm_prob=None):
     dmat = np.zeros([len(qtag),len(dtag)])
     
     for i, d in enumerate(dtag):
         for j, q in enumerate(qtag):
             dmat[j,i] = pdmat[(d,q)]
-    
-    #for i in range(len(dtag)-len(qtag)+1):
-    #    v = np.diag(dmat,i)
-    #    print len(v), np.sum(v)/len(v)
-    #print dmat.shape
-   
-    vdis = np.zeros(len(qtag)+len(dtag)-1)
-    for i in np.arange(-len(qtag)+1,len(dtag)):
-        v = np.diag(dmat,i)
-        vdis[i+len(qtag)-1] = np.sum(v)/len(v)
-        #print len(v), np.sum(v)/len(v)
-    #print dmat.shape
-    return np.min(vdis)
+    #print len(qtag),qtag
+    #print len(dtag),dtag
+    if method =='whole':
+        if len(dtag)-len(qtag)<0: return np.median(dmat)
+        vdis = np.zeros(len(dtag)-len(qtag)+1)
+        for i in range(len(dtag)-len(qtag)+1):
+            v = np.diag(dmat,i)
+            vdis[i] = np.sum(v)/len(v)
+            #print np.sum(v)/len(v)
+        return -np.mean(np.sort(vdis)[:3])
+    elif method == 'short':
+        vdis = np.zeros(len(qtag)+len(dtag)-1)
+        for i in np.arange(-len(qtag)+1,len(dtag)):
+            v = np.diag(dmat,i)
+            vdis[i+len(qtag)-1] = np.sum(v)/len(v)
+            #print np.sum(v)/len(v)
+        return -np.mean(np.sort(vdis)[:3])
+    elif method =='debug':
+        print dmat.shape
+        qprob,dprob = hmm_prob
+        dmat = 10.0*dmat/np.linalg.norm(dmat)
+        dprob = 1.0* -dprob/np.linalg.norm(dprob)
+        qprob = 1.0*-qprob/np.linalg.norm(qprob)
+
+        if len(dtag)-len(qtag)<0: 
+            vdis = 1.0*np.ones(3)*np.median(dmat)
+        else:
+            vdis = np.zeros(len(dtag)-len(qtag)+1)
+            for i in range(len(dtag)-len(qtag)+1):
+                v = np.diag(dmat,i)
+                vdis[i] = np.sum(v)/len(v)
+
+        dmat = (dmat.T + qprob).T
+        dmat = dmat + dprob
+        vdis2 = np.zeros(len(qtag)+len(dtag)-1)
+        for i in np.arange(-len(qtag)+1,len(dtag)):
+            v = np.diag(dmat,i)
+            vdis2[i+len(qtag)-1] = np.sum(v)/len(v)
+        
+        return np.mean(np.sort(vdis2)[:3])
+        #return np.mean(np.sort(vdis)[:3])
+        #return np.min(vdis2)
+        #return np.min(vdis)
 
 
-#def make_scores(qer_path, doc_path, pdmat, sys_name, answ_path):
-def make_score(qer_path, doc_path, pdmat, sys_name):
+
+def calc_score(qer_path, doc_path, pdmat, method):
     dmlf = zrst.util.MLF(doc_path)
     qmlf = zrst.util.MLF(qer_path)
+    if method =='debug':
+        #conclusions so far: 
+        #1)hmm dist alone is better
+        #2)dtw is not only usless, it is harmful
+        
+        def dsort(x):
+            zz = sorted(zip(x,range(len(x))), key = lambda x:x[0])
+            a,b = zip(*zz)
+            return b
+        qql = dsort(qmlf.wav_list)
+        ddl = dsort(dmlf.wav_list)
+        def qq(index):
+            return qql[index-1]
+        def dd(index):
+            return ddl[index-1]
+        ss = []
+        print dsort(['s3','s1','s4','s2'])
+        #for j, qtag in enumerate(qmlf.tag_list):
+        #    for i, dtag in enumerate(dmlf.tag_list)
+        #print 'pdmat',pdmat[('p1','p1')]
+        qf,df = 31,126
+        #qf,df = 390,46
+        glist = [(qq(qf),dd(df))] + map(lambda t: (qq(qf), dd(t+1)), range(11662)) + map(lambda t: (qq(t+1), dd(df)), range(445))
+        
+        '''
+        for j,i in [(qq(31),dd(126)),\
+                    (qq(31),dd(127)),\
+                    (qq(31),dd(128)),\
+                    (qq(31),dd(129)),\
+                    (qq(32),dd(126)),\
+                    (qq(33),dd(126)),\
+                    (qq(34),dd(126))]:
+        '''
+        for j,i in glist:
+            # True 
+            #if not( qmlf.wav_list[j]=='quesst2015_dev_0390' and dmlf.wav_list[i]=='quesst2015_00046'): continue # 
+            #if not( qmlf.wav_list[j]=='quesst2015_dev_0031' and dmlf.wav_list[i]=='quesst2015_00126'): continue
+
+            qtag, dtag = qmlf.tag_list[j],dmlf.tag_list[i]
+            #print dtag
+            #print qtag
+            q = int(qmlf.wav_list[j].split('_')[-1])
+            d = int(dmlf.wav_list[i].split('_')[-1])
+            #print q,d
+            qprob,dprob =  (np.array(qmlf.log_list[j]), np.array(dmlf.log_list[i]))
+            #print qprob
+            #print dprob
+            #print token_pdist[(dtag[0],qtag[0])]
+            #scores[q,d] = zrst.util.SubDTW(dtag, qtag, lambda a,b: token_pdist[(a,b)])
+            vtag = calc_dist(qtag[1:-1], dtag[1:-1], pdmat, method, (qprob[1:-1],dprob[1:-1]))
+            ss.append(vtag)
+            #print vtag
+        xx = ss[1:]-ss[0] 
+        print 'larger better',np.sum(xx)
+        #print dmlf.wav_list[0], qmlf.wav_list[0]
+    return 
     scores = np.zeros([len(qmlf.wav_list), len(dmlf.wav_list)])
-    if 'dev' in sys_name.split('_')[0]:
-        qer_list = dev_list
-    else:
-        qer_list = eva_list
-    for i, dtag in enumerate(dmlf.tag_list):
-        print 100.0*i/len(dmlf.tag_list)
-        for j, qtag in enumerate(qmlf.tag_list]):
+    if method=='zero':
+        return scores
+    if method=='rand':
+        return np.random.rand(len(qmlf.wav_list), len(dmlf.wav_list))
+
+    for j, qtag in enumerate(qmlf.tag_list):
+        print score_name, 100.0*j/len(qmlf.tag_list)
+        for i, dtag in enumerate(dmlf.tag_list):
             #print dtag, qtag
             #print dtag, dmlf.tag_list[d]
             #print qtag, qmlf.tag_list[q]
             d = int(dmlf.wav_list[i].split('_')[-1])-1
             q = int(qmlf.wav_list[j].split('_')[-1])-1
-            #print pdist[(dtag[0],qtag[0])]
+            #print token_pdist[(dtag[0],qtag[0])]
+            #scores[q,d] = zrst.util.SubDTW(dtag, qtag, lambda a,b: token_pdist[(a,b)])
+            if method =='warp':
+                scores[q,d] = dtw.pattern_dtw(qtag, dtag, pdmat)
+            elif method=='whole' or 'short':
+                scores[q,d] = calc_dist(qtag, dtag, pdmat, method)
+            #break
+        #break
+    return scores
 
-            #scores[q,d] = zrst.util.SubDTW(dtag, qtag, lambda a,b: pdist[(a,b)])
 
-            #scores[q,d] = dtw.pattern_dtw(qtag, dtag, pdmat)
-            scores[q,d] =  calc_dist(qtag, dtag, pdmat)
-    #'quesst2015_eval_0001'
-    #'quesst2015_00032'
-    ###scores = np.zeros([len(qmlf.wav_list), len(dmlf.wav_list)]) 
-    yesno = np.zeros([len(qmlf.wav_list), len(dmlf.wav_list)]) 
 
-    write_mediaeval_score(sys_name, '', yesno,  scores, qer_list, doc_list, score_file(sys_name))
-    #write_mediaeval_scores(sys_name, yesno, scores, answ_path)
 
-def make_score_macro(deveva, cor, m, n):
-    tokname = token_name(cor, m, n)
+def make_score(qer, cor, m, n, method):
+    #qer, cor, m, n, method = score_name.split('_')
+    tok_name = token_name(cor, m, n) 
+    scr_name = score_name(qer, tok_name, method)
+    try:
+        sc = pickle.load(open(score(scr_name),'r'))
+        print 'loaded precomputed score for ' + scr_name
+        return sc
+    except:
+        print 'computing score for ' + scr_name
+
     if cor=='doc':
-        doc_mlf = '/home/c2tao/mediaeval_token/token/{}/result/result.mlf'.format(tokname)
-        qer_mlf = '/home/c2tao/mediaeval_token/decode/{}_{}.mlf'.format(tokname, deveva)
+        doc_mlf = token_result(tok_name)
+        qer_mlf = decode(decode_name(tok_name, qer))
     else:
-        if cor==deveva:
-            qer_mlf = '/home/c2tao/mediaeval_token/token/{}/result/result.mlf'.format(tokname)
+        print 'cor,qer',cor, qer
+        if cor==qer:
+            qer_mlf = token_result(tok_name)
         else:
-            qer_mlf = '/home/c2tao/mediaeval_token/decode/{}_{}.mlf'.format(tokname, deveva)
-        doc_mlf = '/home/c2tao/mediaeval_token/decode/{}_doc.mlf'.format(tokname)
-        
-    pdmat = make_pdist(cor, m, n)
-    make_score(qer_mlf, doc_mlf, pdmat, score_name(deveva, tokname))
+            qer_mlf = decode(tok_name, qer)
+        doc_mlf = decode(decode_name(tok_name, 'doc'))
 
-def eval_score(sys_name, answ_dir):
-    try: os.mkdir(score_dir(sys_name))
-    except:pass
+    sc = calc_score(qer_mlf, doc_mlf, make_pdist(cor, m, n), method)
+    if method !='debug':
+        with open(score(scr_name),'w') as f:
+            pickle.dump(sc, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    subprocess.Popen(['cp', score_file(sys_name), score_dir(sys_name)])
-    subprocess.Popen(['./score-TWV-Cnxe.sh', score_dir(sys_name), answ_dir], cwd = answ_root)
+
+def make_eval(qer, cor, m, n, method, ans, thresh=None):
+    scr_name = score_name(qer, token_name(cor, m, n), method)
+    eva_name = evals_name(scr_name, ans)
+    try:
+        evaluation = parse_eval(evals(eva_name))
+        print 'loaded precomputed evaluation for ' + eva_name
+        print evaluation
+        return evaluation
+    except:
+        #print 'computing evaluation for ' + eva_name
+        pass
+
+    if not os.path.isfile(score(scr_name)):
+        #print 'no score calculated for', scr_name
+        return
+    evaldir = evals_dir(eva_name) 
+    evalfile = evals_file(eva_name)
+    subprocess.Popen(['rm', '-rf', evaldir])
+    subprocess.Popen(['mkdir', evaldir])
+    sc = make_score(qer, cor, m, n, method)
+    if thresh==None:
+        thresh = np.median(sc)
+    if qer=='dev':
+        qer_list = dev_list
+    else:
+        qer_list = eva_list
+
+    yesno = sc < thresh
+    write_mediaeval_score(eva_name, '', yesno,  sc, qer_list, doc_list, evalfile)
+    #subprocess.Popen(['cp', evals_file(score_name), evals_dir(score_name)])
+    subprocess.Popen(['./score-TWV-Cnxe.sh', evaldir, answer(qer, ans)], cwd = answer_root)
+    time.sleep(30)
+    '''
+    output, error = p.communicate()
+    if p.returncode!=0:
+        print '#################'
+        print output, error
+    '''
+    subprocess.Popen(['rm', evalfile])
+    #DET.pdf  score.out  TWV.pdf
+    subprocess.Popen(['rm', 'DET.pdf'], cwd = evaldir)
+    subprocess.Popen(['rm', 'TWV.pdf'], cwd = evaldir)
+    evaluation = parse_eval(evals(eva_name))
+    print evaluation
+    return evaluation
+
  
 def ran_qer_token():
     token_args = []
@@ -258,22 +400,42 @@ def ran_make_decode():
 
 def run_make_score():
     token_args = []
-    for deveva in ['dev','eva']:
-        for hmm_c in ['dev','eva']:
-            for m in [3, 5, 7]:
-                for n in [10, 100, 200, 300]:
-                    token_args.append((deveva,hmm_c,m,n))
-
-    for deveva in ['dev','eva']:
-        for hmm_c in ['doc']:
-            for m in [3, 5, 7]:
+    '''
+    for qer in ['dev','eva']:
+        for hmm_c in ['dev','eva','doc']:
+            for m in [3,5,7]:
                 for n in [100, 200]:
-                    token_args.append((deveva,hmm_c,m,n))
+                    for method in ['whole','short', 'warp']:
+                        token_args.append((qer,hmm_c,m,n,method))
+    '''
+    for qer in ['dev']:
+        for hmm_c in ['dev']:
+            for m in [7]:
+                for n in [100]:
+                    for method in ['debug']:
+                        token_args.append((qer,hmm_c,m,n,method))
+    zrst.util.run_parallel(make_score, token_args)
 
-    print token_args
-    zrst.util.run_parallel(make_decode, token_args)
 
-
+def run_make_eval():
+    '''
+    for qer in ['dev','eva']:
+        for hmm_c in ['dev','eva','doc']:
+            for m in [3,5,7]:
+                for n in [100, 200]:
+                    for method in ['whole','short', 'warp', 'rand', 'zero']:
+                        for ans in ['','T1','T2','T3']:
+                            make_eval(qer,hmm_c, m, n, method, ans)
+    '''
+    for qer in ['dev']:
+        for hmm_c in ['doc']:
+            for m in [7]:
+                for n in [100]:
+                    for method in ['rand']:
+                        for ans in ['Chinese']:
+                            make_eval(qer,hmm_c, m, n, method, ans)
+    
+    
 
 if __name__=='__main__':
     #make_init()
@@ -281,22 +443,6 @@ if __name__=='__main__':
     #ran_doc_token()
     #ran_make_pdist() 
     #ran_make_decode()
-    '''
-    #qer_mlf = '/home/c2tao/mediaeval_token/token/dev_5_100/result/result.mlf'
-    #doc_mlf = '/home/c2tao/mediaeval_token/decode/dev_5_100_doc.mlf'
     
-    qer_mlf = '/home/c2tao/mediaeval_token/decode/doc_5_100_dev.mlf'
-    doc_mlf = '/home/c2tao/mediaeval_token/token/doc_5_100/result/result.mlf'
-    
-    pdmat = make_pdist('dev', 5, 100)
-    #answ_path = 'groundtruth_quesst2015_eval' 
-    answ_path = 'groundtruth_quesst2015_dev' 
-     
-    #make_scores(qer_mlf, doc_mlf, pdmat,'dev_5_100',answ_path)
-    make_score(qer_mlf, doc_mlf, pdmat,'dev_dev_5_100')
-    #eval_score('dev_dev_5_100', answ_path)
-    '''
-    
-    make_score_macro('dev','doc',3,100,'dev')
-    answ_path = 'groundtruth_quesst2015_dev' 
-    eval_score(score_name('dev',(token_name('doc',3,100))), answ_path)
+    run_make_score()
+    #run_make_eval() 

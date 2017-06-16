@@ -1,4 +1,4 @@
-from __future__ import print_function  # Only needed for Python 2
+#from __future__ import print_function  # Only needed for Python 2
 import numpy as np
 import os
 #example1
@@ -43,6 +43,15 @@ MySystem.stdlist.xml
 </detected_termlist>
 </stdlist>
 '''
+'''
+Main Results:
+actTWV: 0.0  maxTWV: 3.3927827E-10  Threshold: 23.91105
+actCnxe: 26.030018  minCnxe: 0.99944884
+Model-dependent calibration Results:
+Upper-bound TWV (model-dependent offset)  -  actTWV: 9.79833E-4  maxTWV: 9.798334E-4  Threshold: 0.0
+Lower-bound Cnxe (model-dependent PAV)    -  actCnxe: 0.83089083  minCnxe: 0.8308501
+'''
+
 
 answ_root = '/home/c2tao/mediaeval_2015/data/scoring_quesst2015_lang_noise/'
 dev_list = ['quesst2015_dev_{0:04}'.format(q+1) for q in range(445)]
@@ -66,7 +75,20 @@ def write_mediaeval_score(sys_name, term_file, yesno,  score, qer_list, doc_list
                 f.write(scoring.format(dec, doc, score[q, d]))
             f.write(qer_end)
         f.write(xml_end)
-
+def parse_mediaeval_score(score_file):
+    with open(score_file,'r') as f:
+        for line in f:
+            print line
+def parse_eval(eval_file):
+    figs = []
+    with open(eval_file,'r') as f:
+        for line in f:
+            if 'actTWV' in line:
+                figs.extend(map(lambda x: float(x.split()[0]),line.split(':')[1:]))
+            if 'actCnxe' in line:
+                figs.extend(map(lambda x: float(x.split()[0]),line.split(':')[1:]))
+    return figs
+            
 def write_mediaeval_scores(sys_name, yesno, score_list, answ_path):
 
     tlist = ''
@@ -98,13 +120,13 @@ def write_mediaeval_scores(sys_name, yesno, score_list, answ_path):
         subprocess.Popen(['./score-TWV-Cnxe.sh', sys_name, answ_path], cwd = answ_root)
     def multi():
 
-        print(stdpath, file=open(txtpath,'w'))
+        #print(stdpath, file=open(txtpath,'w'))
         subprocess.Popen(['gzip', stdlist],cwd=stdpath)
         subprocess.Popen(['./score-systems_T.sh', txtpath],cwd=answ_root)
     single() 
 
 if __name__=='__main__':
-
+    '''
     qer_list = dev_list
     qer_list = eva_list
     
@@ -116,6 +138,9 @@ if __name__=='__main__':
     #answ_path = 'groundtruth_quesst2015_dev' 
     answ_path = 'groundtruth_quesst2015_eval' 
     write_mediaeval_scores('kkk', yesno, score, answ_path)
+    '''
+    #parse_mediaeval_score('../score/dev_dev_7_100_short.stdlist.xml')
+    parse_eval('../temp/eval/dev_dev_7_100_short/score.out')
 
 
 
