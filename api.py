@@ -177,6 +177,14 @@ def calc_dist(qtag, dtag, pdmat, method, hmm_prob=None):
             v = np.diag(dmat,i)
             vdis[i+len(qtag)-1] = np.sum(v)/len(v)
         return -np.mean(np.sort(vdis)[:3])
+    elif method =='only':
+        dmat = hmm_prob
+        vdis = np.zeros(len(qtag)+len(dtag)-1)
+        for i in np.arange(-len(qtag)+1,len(dtag)):
+            v = np.diag(dmat,i)
+            vdis[i+len(qtag)-1] = np.sum(v)/len(v)
+        return -np.mean(np.sort(vdis)[:3])
+        
         
     elif method =='debug':
         print dmat.shape
@@ -431,11 +439,11 @@ def run_make_score():
                     for method in ['whole','short', 'warp']:
                         token_args.append((qer,hmm_c,m,n,method))
     '''
-    for qer in ['dev']:
+    for qer in ['dev','eva']:
         for hmm_c in [qer, 'doc']:
-            for m in [7]:
-                for n in [100]:
-                    for method in ['hmmp','short', 'norm']:
+            for m in [3,5,7]:
+                for n in [100,200]:
+                    for method in ['hmmp','short', 'norm','only']:
                         token_args.append((qer,hmm_c,m,n,method))
     zrst.util.run_parallel(make_score, token_args)
 
@@ -454,7 +462,7 @@ def run_make_eval():
         for hmm_c in [qer, 'doc']:
             for m in [7]:
                 for n in [100]:
-                    for method in ['hmmp','short']:
+                    for method in ['hmmp','short', 'norm']:
                         for ans in ['']:
                             make_eval(qer,hmm_c, m, n, method, ans)
     
