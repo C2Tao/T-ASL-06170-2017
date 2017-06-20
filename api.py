@@ -1,3 +1,6 @@
+import sys
+sys.path.insert(0, '/home/c2tao/zrst')
+
 import os
 import zrst
 import zrst.util
@@ -24,10 +27,16 @@ wav['eva'] = wav_root + 'QUESST2015-eval_groundtruth/eval_queries/'
 init_name = lambda cor, n: '{}_{}'.format(cor, n)
 init = lambda name: path_root + 'mediaeval_token/init/{}_flatten.txt'.format(name)
 
-token_name = lambda cor, m, n: '{}_{}_{}'.format(cor, m, n)
+#token_name = lambda cor, m, n: '{}_{}_{}'.format(cor, m, n)
+token_name = lambda cor, m, n, hier='mult': '{}_{}_{}{}'.format(cor, m, n,'_hier' if hier=='hier' else '')
 token = lambda name: path_root + 'mediaeval_token/token/{}/'.format(name)
+token_fix = lambda name: path_root + 'mediaeval_token/token/{}_snapshot/6_{}/'.format(name,name)
 token_pdist = lambda name: path_root + 'mediaeval_token/pdist/{}.dat'.format(name)
 token_result = lambda name: path_root + 'mediaeval_token/token/{}/result/result.mlf'.format(name)
+
+hier_old = lambda name: path_root + 'mediaeval_token/hier/{}/'.format(name)
+hier_lex = lambda name: path_root + 'mediaeval_token/hier/{}_lex/'.format(name)
+
 
 decode_name = lambda tok, cor: '{}_{}'.format(tok, cor)
 decode = lambda name: path_root + 'mediaeval_token/decode/{}.mlf'.format(name)
@@ -64,6 +73,12 @@ dev_list = ['quesst2015_dev_{0:04}'.format(q+1) for q in range(445)]
 eva_list = ['quesst2015_eval_{0:04}'.format(q+1) for q in range(447)]
 doc_list = ['quesst2015_{0:05}'.format(q+1) for q in range(11662)]
 
+def fix_token(c,m,n):
+    wrongdir = token(token_name(c,m,n))
+    rightdir = token_fix(token_name(c,m,n))
+    #subprocess.Popen(['rm', '-rf', wrongdir])
+    #subprocess.Popen(['cp', '-r', rightdir, wrongdir])
+    subprocess.Popen(['mv', hier_old(token_name(c,m,n)), token(token_name(c,m,n,'hier'))])
 
 def make_list(wav_folder):
     os.listdir(wav_list)
@@ -94,8 +109,21 @@ def make_token(cor, arg_m, arg_n):
             A.iteration('a_keep')
     '''
 
-def make_pdist(cor, arg_m, arg_n):
-    tok_name = token_name(cor, arg_m, arg_n)
+def make_hier(cor, arg_m, arg_n):
+    A = zrst.asr.ASR(corpus=wav[cor], target=hier(token_name(cor, arg_m, arg_n)), dump=init(init_name(cor,arg_n)), do_copy=True, nState=arg_m)
+    A.readASR(token(token_name(cor, arg_m, arg_n)))
+    A.x(3)
+    A.a_keep()
+    A.a_keep()
+    A.x_flatten()
+    
+def make_hier_lex(cor, arg_m, arg_n):
+    A = zrst.asr.ASR(corpus=wav[cor], target=hier_lex(token_name(cor, arg_m, arg_n)), dump=init(init_name(cor,arg_n)), do_copy=True, nState=arg_m)
+    A.readASR(hier(token_name(cor, arg_m, arg_n)))
+    A.x(3)
+
+def make_pdist(cor, arg_m, arg_n, hier='mult'):
+    tok_name = token_name(cor, arg_m, arg_n, hier)
     try:
         dm = pickle.load(open(token_pdist(tok_name),'r'))
         print 'loaded precomputed distance for ' + tok_name
@@ -132,8 +160,8 @@ def make_pdist(cor, arg_m, arg_n):
     return dm
 
     
-def make_decode(hmm_cor, arg_m, arg_n, dec_cor):
-    tok_name = token_name(hmm_cor, arg_m, arg_n)
+def make_decode(hmm_cor, arg_m, arg_n, dec_cor, hier='mult'):
+    tok_name = token_name(hmm_cor, arg_m, arg_n, hier)
     dec_name = decode_name(tok_name, dec_cor)
     A = zrst.asr.ASR(target=token(tok_name))
     A.external_testing(cor_mfcc(dec_cor), decode(dec_name))
@@ -307,9 +335,9 @@ def calc_score(qer_path, doc_path, pdmat, method):
 
 
 
-def make_score(qer, cor, m, n, method):
+def make_score(qer, cor, m, n, method, hier='mult'):
     #qer, cor, m, n, method = score_name.split('_')
-    tok_name = token_name(cor, m, n) 
+    tok_name = token_name(cor, m, n, hier) 
     scr_name = score_name(qer, tok_name, method)
     try:
         sc = pickle.load(open(score(scr_name),'r'))
@@ -329,19 +357,20 @@ def make_score(qer, cor, m, n, method):
             qer_mlf = decode(tok_name, qer)
         doc_mlf = decode(decode_name(tok_name, 'doc'))
 
-    sc = calc_score(qer_mlf, doc_mlf, make_pdist(cor, m, n), method)
+    sc = calc_score(qer_mlf, doc_mlf, make_pdist(cor, m, n, hier), method)
     if method !='debug':
         with open(score(scr_name),'w') as f:
             pickle.dump(sc, f, protocol=pickle.HIGHEST_PROTOCOL)
         return sc
 
-def make_eval(qer, cor, m, n, method, ans, thresh=None):
-    scr_name = score_name(qer, token_name(cor, m, n), method)
+def make_eval(qer, cor, m, n, method, ans, hier = 'mult',thresh=None):
+    scr_name = score_name(qer, token_name(cor, m, n, hier), method)
     eva_name = evals_name(scr_name, ans)
     try:
         evaluation = parse_eval(evals(eva_name))
         print 'loaded precomputed evaluation for ' + eva_name
-        print evaluation
+        #print evaluation
+        print '{0:0.4f}'.format(evaluation[-1])
         return evaluation
     except:
         #print 'computing evaluation for ' + eva_name
@@ -354,7 +383,7 @@ def make_eval(qer, cor, m, n, method, ans, thresh=None):
     evalfile = evals_file(eva_name)
     subprocess.Popen(['rm', '-rf', evaldir])
     subprocess.Popen(['mkdir', evaldir])
-    sc = make_score(qer, cor, m, n, method)
+    sc = make_score(qer, cor, m, n, method, hier)
     if thresh==None:
         thresh = np.median(sc)
     if qer=='dev':
@@ -379,6 +408,7 @@ def make_eval(qer, cor, m, n, method, ans, thresh=None):
     subprocess.Popen(['rm', 'TWV.pdf'], cwd = evaldir)
     evaluation = parse_eval(evals(eva_name))
     print evaluation
+    print '{0:0.4f}'.format(evaluation[-1])
     return evaluation
 
  
@@ -391,6 +421,7 @@ def ran_qer_token():
     print token_args
     zrst.util.run_parallel(make_token, token_args)
 
+
 def ran_doc_token():
     token_args = []
     for c in ['doc']:
@@ -400,36 +431,48 @@ def ran_doc_token():
     print token_args
     zrst.util.run_parallel(make_token, token_args)
 
-def ran_make_pdist():
+def run_qer_token():
     token_args = []
     for c in ['dev','eva']:
         for m in [3, 5, 7]:
             for n in [10, 100, 200, 300]:
                 token_args.append((c, m, n))
+    print token_args
+    #zrst.util.run_parallel(make_hier, token_args
+    #zrst.util.run_parallel(make_hier_lex, token_args)
+    zrst.util.run_parallel(fix_token, token_args)
+
+def ran_make_pdist(hier='mult'):
+    token_args = []
+    for c in ['dev','eva']:
+        for m in [3, 5, 7]:
+            for n in [10, 100, 200, 300]:
+                token_args.append((c, m, n, hier))
     for c in ['doc']:
         for m in [3, 5, 7]:
             for n in [100, 200]:
-                token_args.append((c, m, n))
+                token_args.append((c, m, n, hier))
     print token_args
     zrst.util.run_parallel(make_pdist, token_args)
 
-def ran_make_decode():
+def ran_make_decode(hier='mult'):
     token_args = []
     for hmm_c in ['dev','eva']:
         for m in [3, 5, 7]:
             for n in [10, 100, 200, 300]:
                 for dec_c in ['doc']:
-                    token_args.append((hmm_c, m, n, dec_c))
-
+                    token_args.append((hmm_c, m, n, dec_c, hier))
+    '''
     for hmm_c in ['doc']:
         for m in [3, 5, 7]:
             for n in [100, 200]:
                 for dec_c in ['dev','eva']:
-                    token_args.append((hmm_c, m, n, dec_c))
+                    token_args.append((hmm_c, m, n, dec_c, hier))
+    '''
     print token_args
     zrst.util.run_parallel(make_decode, token_args)
 
-def run_make_score():
+def run_make_score(hier='mult'):
     token_args = []
     '''
     for qer in ['dev','eva']:
@@ -438,17 +481,30 @@ def run_make_score():
                 for n in [100, 200]:
                     for method in ['whole','short', 'warp']:
                         token_args.append((qer,hmm_c,m,n,method))
-    '''
     for qer in ['dev','eva']:
         for hmm_c in [qer, 'doc']:
             for m in [3,5,7]:
                 for n in [100,200]:
                     for method in ['hmmp','short', 'norm','only']:
-                        token_args.append((qer,hmm_c,m,n,method))
+                        token_args.append((qer,hmm_c,m,n,method, hier))
+    for qer in ['dev']:
+        for hmm_c in ['doc']:
+            for m in [3,5,7]:
+                for n in [100,200]:
+                    for method in ['hmmp','short', 'norm']:
+                        token_args.append((qer,hmm_c,m,n,method, hier))
+    '''
+    for qer in ['dev']:
+        for hmm_c in ['dev']:
+            for method in ['hmmp','norm']:
+                for m in [3,5,7]:
+                    for n in [100,200]:
+                        token_args.append((qer,hmm_c,m,n,method, hier))
     zrst.util.run_parallel(make_score, token_args)
 
+    
 
-def run_make_eval():
+def run_make_eval(hier='mult'):
     '''
     for qer in ['dev','eva']:
         for hmm_c in ['dev','eva','doc']:
@@ -457,7 +513,6 @@ def run_make_eval():
                     for method in ['whole','short', 'warp', 'rand', 'zero']:
                         for ans in ['','T1','T2','T3']:
                             make_eval(qer,hmm_c, m, n, method, ans)
-    '''
     for qer in ['dev', 'eva']:
         for hmm_c in [qer, 'doc']:
             for m in [7]:
@@ -465,8 +520,23 @@ def run_make_eval():
                     for method in ['hmmp','short', 'norm']:
                         for ans in ['']:
                             make_eval(qer,hmm_c, m, n, method, ans)
+    for qer in ['dev']:
+        for hmm_c in ['doc', 'dev']:
+            for m in [3,5,7]:
+                for n in [100,200]:
+                    for method in ['hmmp','short', 'norm']:
+                        for ans in ['']:
+                            make_eval(qer,hmm_c, m, n, method, ans, hier)
     
+    '''
     
+    for m in [3,5,7]:
+        for n in [100,200]:
+            for qer in ['dev']:
+                for hmm_c in ['doc', 'dev']:
+                    for method in ['hmmp', 'norm']:
+                        for ans in ['']:
+                            make_eval(qer,hmm_c, m, n, method, ans, hier)
 
 if __name__=='__main__':
     #make_init()
@@ -475,6 +545,13 @@ if __name__=='__main__':
     #ran_make_pdist() 
     #ran_make_decode()
     
-    run_make_score()
+    #run_make_score()
+    #run_make_eval()
+
+    #make_hier('dev',3,10) 
+    #run_qer_token()
+    #ran_make_pdist('hier') 
+    #ran_make_decode('hier')
     
-    #run_make_eval() 
+    #run_make_score('hier')
+    run_make_eval('hier')
