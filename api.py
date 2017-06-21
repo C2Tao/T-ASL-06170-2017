@@ -36,6 +36,7 @@ token_result = lambda name: path_root + 'mediaeval_token/token/{}/result/result.
 
 hier_old = lambda name: path_root + 'mediaeval_token/hier/{}/'.format(name)
 hier_lex = lambda name: path_root + 'mediaeval_token/hier/{}_lex/'.format(name)
+hier_dict = lambda name: path_root + 'mediaeval_token/hier/{}_lex/library/dictionary.txt'.format(name)
 
 
 decode_name = lambda tok, cor: '{}_{}'.format(tok, cor)
@@ -121,7 +122,13 @@ def make_hier_lex(cor, arg_m, arg_n):
     A = zrst.asr.ASR(corpus=wav[cor], target=hier_lex(token_name(cor, arg_m, arg_n)), dump=init(init_name(cor,arg_n)), do_copy=True, nState=arg_m)
     A.readASR(hier(token_name(cor, arg_m, arg_n)))
     A.x(3)
-
+def parse_lex(cor, arg_m, arg_n):
+    with open(hier_dict(token_name(cor, arg_m, arg_n)),'r') as f:
+        #return len(f.readlines())-2
+        w = f.readlines()
+        u = (max(map(lambda x: len(x.split()),w))-1)*arg_m
+        v = len(w)-2
+        return u,v 
 def make_pdist(cor, arg_m, arg_n, hier='mult'):
     tok_name = token_name(cor, arg_m, arg_n, hier)
     try:
@@ -368,9 +375,10 @@ def make_eval(qer, cor, m, n, method, ans, hier = 'mult',thresh=None):
     eva_name = evals_name(scr_name, ans)
     try:
         evaluation = parse_eval(evals(eva_name))
-        print 'loaded precomputed evaluation for ' + eva_name
+        #print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[-1])
+        print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[3])
+        print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[4])
         #print evaluation
-        print '{0:0.4f}'.format(evaluation[-1])
         return evaluation
     except:
         #print 'computing evaluation for ' + eva_name
@@ -537,6 +545,20 @@ def run_make_eval(hier='mult'):
                     for method in ['hmmp', 'norm']:
                         for ans in ['']:
                             make_eval(qer,hmm_c, m, n, method, ans, hier)
+def run_make_table(ans=''):
+    for m in [3,5,7]:
+        for n in [100,200]:
+            hier = 'mult'
+            print hier,'unsup',(m,n)
+            for method in ['norm','hmmp']:
+                make_eval('dev','doc', m, n, method, ans, hier)
+            print hier,'rev',(m,n)
+            for method in ['norm','hmmp']:
+                make_eval('dev','dev', m, n, method, ans, hier)
+            hier = 'hier'
+            print hier,'rev',parse_lex('dev',m,n)
+            for method in ['norm','hmmp']:
+                make_eval('dev','dev', m, n, method, ans, hier)
 
 if __name__=='__main__':
     #make_init()
@@ -554,4 +576,9 @@ if __name__=='__main__':
     #ran_make_decode('hier')
     
     #run_make_score('hier')
-    run_make_eval('hier')
+    #run_make_eval('hier')
+    run_make_table('')
+    #run_make_table('T1')
+    #run_make_table('T2')
+    #run_make_table('T3')
+    
