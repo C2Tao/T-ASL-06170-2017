@@ -56,6 +56,7 @@ evals_file = lambda name: path_root + 'mediaeval_token/eval/{0}/{0}.stdlist.xml'
 evals_dir = lambda name: path_root + 'mediaeval_token/eval/{}/'.format(name)
 
 
+
 #answ_name=\
 '''              
 _Albanian     _Chinese      _Czech        _Portuguese   _Romanian     _Slovak  
@@ -370,6 +371,7 @@ def make_score(qer, cor, m, n, method, hier='mult'):
             pickle.dump(sc, f, protocol=pickle.HIGHEST_PROTOCOL)
         return sc
 
+
 def make_eval(qer, cor, m, n, method, ans, hier = 'mult',thresh=None):
     scr_name = score_name(qer, token_name(cor, m, n, hier), method)
     eva_name = evals_name(scr_name, ans)
@@ -378,7 +380,7 @@ def make_eval(qer, cor, m, n, method, ans, hier = 'mult',thresh=None):
         #print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[-1])
         print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[3])
         print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[4])
-        #print evaluation
+        #print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[9])
         return evaluation
     except:
         #print 'computing evaluation for ' + eva_name
@@ -560,6 +562,72 @@ def run_make_table(ans=''):
             for method in ['norm','hmmp']:
                 make_eval('dev','dev', m, n, method, ans, hier)
 
+def make_score_avg(qer_list, cor_list, m_list, n_list, method_list, hier_list, avg_method_name):
+    tok_name = token_name('', '', '', '')
+    scr_name = score_name(qer_list[0], tok_name, avg_method_name)
+    try:
+        sc = pickle.load(open(score(scr_name),'r'))
+        print 'loaded precomputed score for ' + scr_name
+        return sc
+    except:
+        print 'computing score for ' + scr_name
+
+    sc = np.zeros(make_score(qer_list[0], cor_list[0], m_list[0], n_list[0], method_list[0], hier_list[0]).shape)
+    for qer, cor, m,  n, method, hier in zip(qer_list, cor_list, m_list, n_list, method_list, hier_list):
+        sc+= make_score(qer, cor, m, n, method, hier)
+    print sc/len(qer_list)
+    with open(score(scr_name),'w') as f:
+        pickle.dump(sc, f, protocol=pickle.HIGHEST_PROTOCOL)
+    return sc
+
+def run_average():
+    qer = 'dev'
+    ans = ''
+    '''
+    for method in ['hmmp','norm']:
+        for hier,hmm_c in [('mult','doc'),('mult','dev'),('hier','dev')]:
+            avg_list = []
+            for m in [3,5,7]:
+                for n in [100,200]:
+                    avg_list.append((qer,hmm_c,m,n,method, hier))
+            avg_list = zip(*avg_list)
+            avg_list.append(','.join(['avg',hier,hmm_c,method]))
+            make_score_avg(*avg_list)
+    '''
+    choice_list= [('A','mult','doc'),('B','mult','dev'),('C','hier','dev')]
+    abc_list = [[0],[1],[2],[0,1],[0,2],[1,2],[0,1,2]]
+    for method in ['norm','hmmp']:
+        for abc in abc_list:
+            avg_list = []
+            alpha_list = ''
+            for i in abc:
+                alpha, hier,hmm_c = choice_list[i]
+                for m in [3,5,7]:
+                    for n in [100,200]:
+                        avg_list.append((qer,hmm_c,m,n,method,hier))
+                alpha_list += alpha
+            avg_list = zip(*avg_list)
+            avg_method = ','.join(['avg',alpha_list, method])
+            avg_list.append(avg_method)
+            print avg_method
+            make_score_avg(*avg_list)
+            make_eval(qer,'', '', '', avg_method, ans, '')
+
+    ''' 
+    hmm_c,m,n = '','',''
+    qer = 'dev'
+    ans = ''
+    hier = ''
+    for method in ['hmmp','norm']:
+        for hier,hmm_c in [('mult','doc'),('mult','dev'),('hier','dev')]:
+            avg_method = ','.join('avg',abc,method)
+            make_eval(qer,hmm_c, m, n, method, ans, hier)
+
+        for abc in ['AB','AC','BC','ABC']
+            avg_method = ','.join('avg',abc,method)
+            make_eval(qer,hmm_c, m, n, method, ans, hier)
+    '''
+
 if __name__=='__main__':
     #make_init()
     #ran_qer_token()
@@ -577,8 +645,8 @@ if __name__=='__main__':
     
     #run_make_score('hier')
     #run_make_eval('hier')
-    run_make_table('')
+    #run_make_table('')
     #run_make_table('T1')
     #run_make_table('T2')
     #run_make_table('T3')
-    
+    run_average() 
