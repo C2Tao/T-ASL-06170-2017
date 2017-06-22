@@ -583,17 +583,6 @@ def make_score_avg(qer_list, cor_list, m_list, n_list, method_list, hier_list, a
 def run_average():
     qer = 'dev'
     ans = ''
-    '''
-    for method in ['hmmp','norm']:
-        for hier,hmm_c in [('mult','doc'),('mult','dev'),('hier','dev')]:
-            avg_list = []
-            for m in [3,5,7]:
-                for n in [100,200]:
-                    avg_list.append((qer,hmm_c,m,n,method, hier))
-            avg_list = zip(*avg_list)
-            avg_list.append(','.join(['avg',hier,hmm_c,method]))
-            make_score_avg(*avg_list)
-    '''
     choice_list= [('A','mult','doc'),('B','mult','dev'),('C','hier','dev')]
     abc_list = [[0],[1],[2],[0,1],[0,2],[1,2],[0,1,2]]
     for method in ['norm','hmmp']:
@@ -613,20 +602,6 @@ def run_average():
             make_score_avg(*avg_list)
             make_eval(qer,'', '', '', avg_method, ans, '')
 
-    ''' 
-    hmm_c,m,n = '','',''
-    qer = 'dev'
-    ans = ''
-    hier = ''
-    for method in ['hmmp','norm']:
-        for hier,hmm_c in [('mult','doc'),('mult','dev'),('hier','dev')]:
-            avg_method = ','.join('avg',abc,method)
-            make_eval(qer,hmm_c, m, n, method, ans, hier)
-
-        for abc in ['AB','AC','BC','ABC']
-            avg_method = ','.join('avg',abc,method)
-            make_eval(qer,hmm_c, m, n, method, ans, hier)
-    '''
 
 if __name__=='__main__':
     #make_init()
@@ -649,4 +624,4 @@ if __name__=='__main__':
     #run_make_table('T1')
     #run_make_table('T2')
     #run_make_table('T3')
-    run_average() 
+    #run_average() 
