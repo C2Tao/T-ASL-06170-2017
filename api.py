@@ -110,9 +110,8 @@ def make_token(cor, arg_m, arg_n):
         for i in range(10):
             A.iteration('a_keep')
     '''
-
 def make_hier(cor, arg_m, arg_n):
-    A = zrst.asr.ASR(corpus=wav[cor], target=hier(token_name(cor, arg_m, arg_n)), dump=init(init_name(cor,arg_n)), do_copy=True, nState=arg_m)
+    A = zrst.asr.ASR(corpus=wav[cor], target=hier_old(token_name(cor, arg_m, arg_n, 'mult')), dump=init(init_name(cor,arg_n)), do_copy=True, nState=arg_m)
     A.readASR(token(token_name(cor, arg_m, arg_n)))
     A.x(3)
     A.a_keep()
@@ -120,9 +119,10 @@ def make_hier(cor, arg_m, arg_n):
     A.x_flatten()
     
 def make_hier_lex(cor, arg_m, arg_n):
-    A = zrst.asr.ASR(corpus=wav[cor], target=hier_lex(token_name(cor, arg_m, arg_n)), dump=init(init_name(cor,arg_n)), do_copy=True, nState=arg_m)
-    A.readASR(hier(token_name(cor, arg_m, arg_n)))
+    A = zrst.asr.ASR(corpus=wav[cor], target=hier_lex(token_name(cor, arg_m, arg_n, 'mult')), dump=init(init_name(cor,arg_n)), do_copy=True, nState=arg_m)
+    A.readASR(hier_old(token_name(cor, arg_m, arg_n, 'mult')))
     A.x(3)
+
 def parse_lex(cor, arg_m, arg_n):
     with open(hier_dict(token_name(cor, arg_m, arg_n)),'r') as f:
         #return len(f.readlines())-2
@@ -378,9 +378,9 @@ def make_eval(qer, cor, m, n, method, ans, hier = 'mult',thresh=None):
     try:
         evaluation = parse_eval(evals(eva_name))
         #print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[-1])
-        print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[3])
-        print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[4])
-        #print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[9])
+        #print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[3])
+        #print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[4])
+        print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[9])
         return evaluation
     except:
         #print 'computing evaluation for ' + eva_name
@@ -448,16 +448,29 @@ def run_qer_token():
             for n in [10, 100, 200, 300]:
                 token_args.append((c, m, n))
     print token_args
-    #zrst.util.run_parallel(make_hier, token_args
-    #zrst.util.run_parallel(make_hier_lex, token_args)
+    zrst.util.run_parallel(make_hier, token_args)
+    zrst.util.run_parallel(make_hier_lex, token_args)
+    zrst.util.run_parallel(fix_token, token_args)
+
+def run_doc_token():
+    token_args = []
+    for c in ['doc']:
+        for m in [3, 5, 7]:
+            for n in [100, 200]:
+                token_args.append((c, m, n))
+    print token_args
+    zrst.util.run_parallel(make_hier, token_args)
+    zrst.util.run_parallel(make_hier_lex, token_args)
     zrst.util.run_parallel(fix_token, token_args)
 
 def ran_make_pdist(hier='mult'):
     token_args = []
+    '''
     for c in ['dev','eva']:
         for m in [3, 5, 7]:
             for n in [10, 100, 200, 300]:
                 token_args.append((c, m, n, hier))
+    '''
     for c in ['doc']:
         for m in [3, 5, 7]:
             for n in [100, 200]:
@@ -467,6 +480,7 @@ def ran_make_pdist(hier='mult'):
 
 def ran_make_decode(hier='mult'):
     token_args = []
+    '''
     for hmm_c in ['dev','eva']:
         for m in [3, 5, 7]:
             for n in [10, 100, 200, 300]:
@@ -478,7 +492,6 @@ def ran_make_decode(hier='mult'):
             for n in [100, 200]:
                 for dec_c in ['dev','eva']:
                     token_args.append((hmm_c, m, n, dec_c, hier))
-    '''
     print token_args
     zrst.util.run_parallel(make_decode, token_args)
 
@@ -503,9 +516,15 @@ def run_make_score(hier='mult'):
                 for n in [100,200]:
                     for method in ['hmmp','short', 'norm']:
                         token_args.append((qer,hmm_c,m,n,method, hier))
-    '''
     for qer in ['dev']:
         for hmm_c in ['dev']:
+            for method in ['hmmp','norm']:
+                for m in [3,5,7]:
+                    for n in [100,200]:
+                        token_args.append((qer,hmm_c,m,n,method, hier))
+    '''
+    for qer in ['dev']:
+        for hmm_c in ['doc']:
             for method in ['hmmp','norm']:
                 for m in [3,5,7]:
                     for n in [100,200]:
@@ -538,8 +557,6 @@ def run_make_eval(hier='mult'):
                         for ans in ['']:
                             make_eval(qer,hmm_c, m, n, method, ans, hier)
     
-    '''
-    
     for m in [3,5,7]:
         for n in [100,200]:
             for qer in ['dev']:
@@ -547,6 +564,15 @@ def run_make_eval(hier='mult'):
                     for method in ['hmmp', 'norm']:
                         for ans in ['']:
                             make_eval(qer,hmm_c, m, n, method, ans, hier)
+    '''
+    for m in [3,5,7]:
+        for n in [100,200]:
+            for qer in ['dev']:
+                for hmm_c in ['doc']:
+                    for method in ['hmmp', 'norm']:
+                        for ans in ['']:
+                            make_eval(qer,hmm_c, m, n, method, ans, hier)
+
 def run_make_table(ans=''):
     for m in [3,5,7]:
         for n in [100,200]:
@@ -558,6 +584,9 @@ def run_make_table(ans=''):
             for method in ['norm','hmmp']:
                 make_eval('dev','dev', m, n, method, ans, hier)
             hier = 'hier'
+            print hier,'unsup',parse_lex('doc',m,n)
+            for method in ['norm','hmmp']:
+                make_eval('dev','doc', m, n, method, ans, hier)
             print hier,'rev',parse_lex('dev',m,n)
             for method in ['norm','hmmp']:
                 make_eval('dev','dev', m, n, method, ans, hier)
@@ -583,8 +612,10 @@ def make_score_avg(qer_list, cor_list, m_list, n_list, method_list, hier_list, a
 def run_average():
     qer = 'dev'
     ans = ''
-    choice_list= [('A','mult','doc'),('B','mult','dev'),('C','hier','dev')]
-    abc_list = [[0],[1],[2],[0,1],[0,2],[1,2],[0,1,2]]
+    #choice_list= [('A','mult','doc'),('B','mult','dev'),('C','hier','dev')]
+    #abc_list = [[0],[1],[2],[0,1],[0,2],[1,2],[0,1,2]]
+    choice_list= [('a','mult','doc'),('b','mult','dev'),('c','hier','doc'),('d','hier','dev')]
+    abc_list = [[0],[1],[2],[3]]
     for method in ['norm','hmmp']:
         for abc in abc_list:
             avg_list = []
@@ -607,6 +638,7 @@ if __name__=='__main__':
     #make_init()
     #ran_qer_token()
     #ran_doc_token()
+    #run_doc_token()
     #ran_make_pdist() 
     #ran_make_decode()
     
@@ -620,8 +652,8 @@ if __name__=='__main__':
     
     #run_make_score('hier')
     #run_make_eval('hier')
-    #run_make_table('')
-    #run_make_table('T1')
-    #run_make_table('T2')
-    #run_make_table('T3')
-    #run_average() 
+    run_make_table('')
+    run_make_table('T1')
+    run_make_table('T2')
+    run_make_table('T3')
+    run_average() 
