@@ -4,7 +4,7 @@ sys.path.insert(0, '/home/c2tao/zrst')
 import os
 import zrst
 import zrst.util
-import zrst.asr
+#import zrst.asr
 from zrst import hmm
 import cPickle as pickle
 import numpy as np
