@@ -90,7 +90,7 @@ def make_hier(cor, arg_m, arg_n):
 def make_flat(cor, arg_m, arg_n):
     tar_path = target=token_path(token_name(cor, arg_m, arg_n, 'flat'))
     if os.path.isdir(tar_path):
-        print 'lexicon has been flattened:', tar_path
+        print 'lexicon has been flattened at:', tar_path
         return
     A = zrst.asr.ASR(target=tar_path, nState=arg_m)
     A.readASR(token_path(token_name(cor, arg_m, arg_n,'hier')))
@@ -99,9 +99,9 @@ def make_flat(cor, arg_m, arg_n):
 
 def make_post(cor, arg_m, arg_n, hier):
     tar_path = target=token_path(token_name(cor, arg_m, arg_n, hier+'post'))
-    #if os.path.isdir(tar_path):
-    #    print 'lexicon has been flattened:', tar_path
-    #    return
+    if os.path.isdir(tar_path):
+        print 'lattice has been constructed at:', tar_path
+        return
     A = zrst.asr.ASR(target=tar_path, nState=arg_m)
     
     A.readASR(token_path(token_name(cor, arg_m, arg_n, flat_name(hier))))
