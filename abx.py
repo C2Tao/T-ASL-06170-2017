@@ -33,6 +33,7 @@ def token_name(cor, m, n, hier):
 def token_pdist(tok_name):
     return '/home/c2tao/mediaeval_token/abx_pdist/{}.dat'.format(tok_name)
 
+
 def token_path(tok_name):
     #'~/ZRC_revision/eng/zrstExps/mfc_50_3'
     #50,100,300,500
@@ -49,6 +50,17 @@ def token_path(tok_name):
             return '/home/c2tao/ZRC_revision/surprise/zrstExps/mfc_{}_{}/'.format(str(n), str(m))
     else:
         return '/home/c2tao/mediaeval_token/abx_token/{}/'.format(tok_name)
+
+def token_dict(path):
+    return  os.path.join(path, 'library/dictionary.txt')
+
+def parse_lex(cor, arg_m, arg_n, hier):
+    with open(token_dict(token_path(token_name(cor, arg_m, arg_n, hier))),'r') as f:
+        #return len(f.readlines())-2
+        w = f.readlines()
+        u = (max(map(lambda x: len(x.split()),w))-1)*arg_m
+        v = len(w)-2
+        return u,v 
 
 
 def _fix_abs_path(A, cor):
@@ -116,17 +128,23 @@ def make_post(cor, arg_m, arg_n, hier):
 
 def _parse_timestep(cor):
     wav_list = []
-    med_dict = {}
+    beg_dict,med_dict,end_dict = {},{},{}
     timestep_path = '/home/c2tao/ZRC_data/{0}/{0}_timesteps.txt'.format(cor)
     with open(timestep_path,'r') as g:
         for line in g:
+            #0326 0327 # 415.803 415.819 415.835
             if 'wav'  in line:
                 wav = line.split('.')[0]
                 wav_list.append(wav)
+                beg_dict[wav]=[]
                 med_dict[wav]=[]
+                end_dict[wav]=[]
             if '#' in line:
+                beg_dict[wav].append(line.split()[3])
                 med_dict[wav].append(line.split()[4])
-    return wav_list, med_dict
+                end_dict[wav].append(line.split()[5])
+    
+    return wav_list, med_dict, beg_dict, end_dict
 def _uncut_wav(wav_list):    
     # uncut used only for eng    
     uncut_list = []
@@ -144,13 +162,13 @@ def _uncut_wav(wav_list):
 def make_gram(cor, arg_m, arg_n, hier):
     tar_path = token_path(token_name(cor, arg_m, arg_n, hier+'post'))
     post_path = os.path.join(tar_path, 'posterior')
-    #if os.path.isdir(post_path):
-    #    print 'posterior has been constructed at:', post_path
-    #    return
+    if os.path.isdir(post_path):
+        print 'posterior has been constructed at:', post_path
+        return
     try: os.mkdir(post_path)
     except: pass
 
-    wav_list, med_dict = _parse_timestep(cor)
+    wav_list, med_dict, _, _ = _parse_timestep(cor)
     if cor=='eng':
         uncut_list, uncut_dict = _uncut_wav(wav_list)
     elif cor=='xit':
@@ -174,6 +192,66 @@ def make_gram(cor, arg_m, arg_n, hier):
         print 'posteriorgram built for:', uncut
     #lat_path2 = '/home/c2tao/mediaeval_token/abx_token/eng_3_300_hierpost/result/s0101a_002.lat'
 
+def make_class(cor, arg_m, arg_n, hier):
+    tar_path = token_path(token_name(cor, arg_m, arg_n, hier))
+    class_path = os.path.join(tar_path, 'glass.txt')
+    mlf_path = os.path.join(tar_path, 'result/result.mlf')
+    if os.path.isfile(class_path):
+        print 'class file has been constructed at:', class_path
+        return
+    
+    M = zrst.util.MLF(mlf_path)
+    _tok = {}
+    for i,t in enumerate(M.tok_list): 
+        _tok[t]=  i+1
+
+    mwav_list = map(lambda x: x.split('/')[-1],M.wav_list)
+    _wav = {}
+    for i,w in enumerate(mwav_list):
+        _wav[w]= M.wav_list
+
+
+    wav_list,_, beg_dict, end_dict = _parse_timestep(cor)
+    if cor=='eng':
+        uncut_list, uncut_dict = _uncut_wav(wav_list)
+    elif cor=='xit':
+        uncut_list, uncut_dict = wav_list, dict(zip(wav_list,map(lambda x: [x],wav_list)))
+
+    recut_dict = {}
+    for u in uncut_dict.keys():
+        for w in uncut_dict[u]:
+            recut_dict[w] = u
+    '''
+    Class 1
+    s0101a 60.059 60.131
+    s0101a 64.709 64.781
+    s0101a 79.545 79.617
+    s0101a 93.362 93.434
+    '''
+    tok_time = {}
+    print M.tok_list
+    for wav, tag, tim in zip(mwav_list, M.tag_list, M.int_list):
+        for i, t in enumerate(tag):
+            ztim = [0]+tim
+            btim = ztim[:-1]
+            etim = list(np.array(ztim[1:])-1)
+            #print wav,ztim
+            #print beg_dict[wav]
+            #print end_dict[wav]
+            #print len(end_dict[wav])
+            try:
+                tok_time[t] += (recut_dict[wav], beg_dict[wav][btim[i]], end_dict[wav][etim[i]]),
+            except:
+                tok_time[t] = [(recut_dict[wav], beg_dict[wav][btim[i]], end_dict[wav][etim[i]])]
+    #print tok_time['sil'][:3]
+    with open(class_path,'w') as f:
+        for t in M.tok_list:
+            f.write('Class '+str(_tok[t])+'\n') 
+            for tp in tok_time[t]:
+                f.write(' '.join(tp)+'\n')
+            f.write('\n')
+
+
 def make_abx(cor, arg_m, arg_n, hier):
     tar_path = token_path(token_name(cor, arg_m, arg_n, hier+'post'))
     post_path = os.path.join(tar_path, 'posterior')
@@ -186,6 +264,15 @@ def make_abx(cor, arg_m, arg_n, hier):
     #~/ZRC_revision/eng/eval1/english_eval1/eval1 -j 8 ../abx_token/eng_3_50_hierpost/posterior eng_eval1
 
   
+def make_seven(cor, arg_m, arg_n, hier):
+    tar_path = token_path(token_name(cor, arg_m, arg_n, hier))
+    class_path = os.path.join(tar_path, 'glass.txt')
+    seven_path = os.path.join(tar_path, 'seven')
+    if cor=='eng':
+        bin_path ='/home/c2tao/ZRC_revision/eng/eval2/english_eval2'
+    elif cor=='xit':
+        bin_path ='/home/c2tao/ZRC_revision/surprise/eval2/xitsonga_eval2'
+    subprocess.call([bin_path, '-j','8', class_path, seven_path])
                 
 def make_table(cor, arg_m, arg_n, hier):
     tar_path = token_path(token_name(cor, arg_m, arg_n, hier+'post'))
@@ -198,7 +285,12 @@ def make_table(cor, arg_m, arg_n, hier):
             lines = f.readlines()
             abx_within = float(lines[1].split(':')[1].strip().split()[0])
             abx_across =  float(lines[2].split(':')[1].strip().split()[0])
-            print '\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}'.format(cor, arg_m, arg_n, hier, 'within', abx_within, 'across', abx_across)
+            #print '\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}'.format(cor, arg_m, arg_n, hier, 'within', abx_within, 'across', abx_across)
+            uv = parse_lex(cor, arg_m, arg_n, hier)
+            mn = arg_m, arg_n
+            if hier =='mult':
+                uv = '-'
+            print '&{:<12}&{:<12}&{:.2f}  &{:.2f}\\\\'.format(mn, uv, abx_across, abx_within)
             
     except:
         print 'still waiting for results:', tar_path
@@ -296,11 +388,28 @@ def run_make_abx():
             for c in ['eng','xit']:
                 for h in ['hier','mult']:
                     make_abx(c, m, n, h)
-def run_make_table():
-    for n in [50, 100, 300, 500]:
+
+def run_make_seven():     
+    token_args = []
+    for n in [50, 100]:
         for m in [3, 5, 7]:
             for c in ['eng','xit']:
                 for h in ['hier','mult']:
+                    token_args.append((c, m, n, h))
+    print token_args
+    zrst.util.run_parallel(make_class, token_args)
+    zrst.util.run_parallel(make_seven, token_args)
+
+def run_make_table():
+    for c in ['eng','xit']:
+        print c, 'mn,uv,across,within'
+        for h in ['mult','hier']:
+            if h == 'hier':
+                print '\\multirow{6}{*}{Hier.}'
+            else:   
+                print '\\multirow{6}{*}{Mult.}'
+            for m in [3, 5, 7]:
+                for n in [50, 100]:#, 300, 500]:
                     make_table(c, m, n, h)
     
 if __name__=='__main__':
@@ -310,4 +419,7 @@ if __name__=='__main__':
     #run_make_post()
     #run_make_gram()
     #run_make_abx()
-    run_make_table()
+    #run_make_table()
+    #make_class('eng',3,50,'hierpost')
+    #make_seven('eng',3,50,'hierpost')
+    run_make_seven()

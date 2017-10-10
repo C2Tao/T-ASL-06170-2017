@@ -380,8 +380,13 @@ def make_eval(qer, cor, m, n, method, ans, hier = 'mult',thresh=None):
         #print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[-1])
         #print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[3])
         #print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[4])
-        print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[9])
-        return evaluation
+        #eval 9 
+        #print 'loaded precomputed evaluation for ' + eva_name+ ' {0:0.4f}'.format(evaluation[9])
+        if hier=='hier':
+            u, v =  parse_lex(cor,m,n)
+        else:
+            u, v = '',''
+        return method, cor, (m, n), (u, v), evaluation[9]
     except:
         #print 'computing evaluation for ' + eva_name
         pass
@@ -405,7 +410,7 @@ def make_eval(qer, cor, m, n, method, ans, hier = 'mult',thresh=None):
     write_mediaeval_score(eva_name, '', yesno,  sc, qer_list, doc_list, evalfile)
     #subprocess.Popen(['cp', evals_file(score_name), evals_dir(score_name)])
     subprocess.Popen(['./score-TWV-Cnxe.sh', evaldir, answer(qer, ans)], cwd = answer_root)
-    time.sleep(30)
+    time.sleep(50)
     '''
     output, error = p.communicate()
     if p.returncode!=0:
@@ -591,6 +596,53 @@ def run_make_table(ans=''):
             for method in ['norm','hmmp']:
                 make_eval('dev','dev', m, n, method, ans, hier)
 
+def run_make_table_new(ans=''):
+    choice_list= {('mult','doc'):'a',('mult','dev'):'b',('hier','doc'):'c',('hier','dev'):'d'}
+    for cor in ['dev','doc']:
+        print ans, cor, ': mn, uv, norm, hmmp'
+        for hier in ['mult','hier']:
+            if hier == 'hier':
+                print '\\multirow{7}{*}{Hier.}'
+            else:   
+                print '\\multirow{7}{*}{Multi.}'
+            for m in [3,5,7]:
+                for n in [100,200]:
+                    _, _, mn, uv, ev_norm = make_eval('dev', cor, m, n, 'norm', ans, hier)
+                    _, _, mn, uv, ev_hmmp = make_eval('dev', cor, m, n, 'hmmp', ans, hier)
+                    if hier=='mult':
+                        uv = '-'   
+                    print '&{:<12}&{:<12}&{:.4f}  &{:.4f}\\\\'.format(mn, uv, ev_norm, ev_hmmp)
+            if ans =='':
+                avg_method = ','.join(['avg',choice_list[hier,cor], 'norm'])
+                _, _, _, _, ev_norm = make_eval('dev', '', '', '', avg_method, ans, '')
+                avg_method = ','.join(['avg',choice_list[hier,cor], 'hmmp'])
+                _, _, _, _, ev_hmmp = make_eval('dev', '', '', '', avg_method, ans, '')
+                print '&{:<12}&{:<12}&{:.4f}  &{:.4f}\\\\ \\hline'.format('average', '-', ev_norm, ev_hmmp)
+            
+def run_make_table_T():
+    choice_list= {('mult','doc'):'a',('mult','dev'):'b',('hier','doc'):'c',('hier','dev'):'d'}
+    for cor in ['dev','doc']:
+        print cor, ': mn, uv, T1, T2, T3'
+        for hier in ['mult','hier']:
+            if hier == 'hier':
+                print '\\multirow{7}{*}{Hier.}'
+            else:   
+                print '\\multirow{7}{*}{Mult.}'
+            for m in [3,5,7]:
+                for n in [100,200]:
+                    ev = [0,0,0]
+                    for i,ans in enumerate(['T1','T2','T3']):
+                        _, _, mn, uv, ev[i] = make_eval('dev', cor, m, n, 'hmmp', ans, hier)
+                    if hier=='mult':
+                        uv = '-'   
+                    print '&{:<12}&{:<12}&{:.4f}  &{:.4f}  &{:.4f}\\\\'.format(mn, uv, ev[0],ev[1],ev[2])
+            ev = [0,0,0]
+            for i,ans in enumerate(['T1','T2','T3']):
+                avg_method = ','.join(['avg',choice_list[hier,cor], 'hmmp'])
+                _, _, _, _, ev[i] = make_eval('dev', '', '', '', avg_method, ans, '')
+            print '&{:<12}&{:<12}&{:.4f}  &{:.4f}  &{:.4f}\\\\ \\hline'.format('average', '-',ev[0],ev[1],ev[2])
+
+    
 def make_score_avg(qer_list, cor_list, m_list, n_list, method_list, hier_list, avg_method_name):
     tok_name = token_name('', '', '', '')
     scr_name = score_name(qer_list[0], tok_name, avg_method_name)
@@ -609,9 +661,8 @@ def make_score_avg(qer_list, cor_list, m_list, n_list, method_list, hier_list, a
         pickle.dump(sc, f, protocol=pickle.HIGHEST_PROTOCOL)
     return sc
 
-def run_average():
+def run_average(ans):
     qer = 'dev'
-    ans = ''
     #choice_list= [('A','mult','doc'),('B','mult','dev'),('C','hier','dev')]
     #abc_list = [[0],[1],[2],[0,1],[0,2],[1,2],[0,1,2]]
     choice_list= [('a','mult','doc'),('b','mult','dev'),('c','hier','doc'),('d','hier','dev')]
@@ -652,8 +703,14 @@ if __name__=='__main__':
     
     #run_make_score('hier')
     #run_make_eval('hier')
-    run_make_table('')
-    run_make_table('T1')
-    run_make_table('T2')
-    run_make_table('T3')
-    run_average() 
+    #run_make_table('')
+    #run_make_table('T1')
+    #run_make_table('T2')
+    #run_make_table('T3')
+    #run_average('') 
+    #run_average('T1') 
+    #run_average('T2') 
+    #run_average('T3') 
+
+    run_make_table_new('')
+    run_make_table_T()
